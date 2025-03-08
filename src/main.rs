@@ -1,47 +1,55 @@
-use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode};
-use ratatui::{style::{Color, Style}, text::Span, widgets::{canvas::Canvas, Block, Borders}, DefaultTerminal, Frame};
+use std::io;
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    Terminal,
+    widgets::{Block, Borders, Paragraph},
+    style::{Style, Color},
+};
+use astro_swarm::map::noise::Map;
 
-fn main() -> Result<()> {
-    color_eyre::install()?;
-    let terminal = ratatui::init();
-    let result = run(terminal);
-    ratatui::restore();
-    result
+fn main() -> io::Result<()> {
+    let map = Map::new(110, 15, 34);
+
+    let mut terminal = setup_terminal()?;
+    let app_result = run_app(&map, &mut terminal);
+    restore_terminal(&mut terminal)?;
+    app_result
 }
 
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    let mut exited = false;
+fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    Terminal::new(backend)
+}
 
-    while exited == false {
-        terminal.draw(render)?;
-
-        match event::read()? {
-            Event::Key(key_event) => {
-                if key_event.code == KeyCode::Char('q') {
-                    exited = true;
-                }
-            }
-            _ => {}
-        }
-
-    }
+fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    terminal.show_cursor()?;
     Ok(())
 }
 
-fn  render(frame: &mut Frame) {
-    let area = frame.area();
+fn run_app(map: &Map, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    loop {
+        terminal.draw(|frame| {
+            let widget = Paragraph::new(map.to_string())
+                .block(Block::default().borders(Borders::ALL).title("Astro Swarm Map"))
+                .style(Style::default().fg(Color::White));
+            frame.render_widget(widget, frame.area());
+        })?;
 
-    let canvas = Canvas::default()
-        .block(Block::default().title("My map").borders(Borders::ALL))
-        .paint(|ctx| {
-            ctx.layer();
-            ctx.print(
-                0.0,
-                0.0,
-                Span::styled("X", Style::default().fg(Color::Red))
-            );
-        });
-
-    frame.render_widget(canvas, area);
+        if let Event::Key(key) = event::read()? {
+            if key.code == KeyCode::Char('q') {
+                break;
+            }
+        }
+    }
+    Ok(())
 }
