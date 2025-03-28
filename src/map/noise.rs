@@ -1,11 +1,15 @@
 use noise::{NoiseFn, Perlin};
+use rand::prelude::*;
 use std::collections::VecDeque;
 use std::fmt;
+
+use super::resources::{ResourceManager, ResourceType};
 
 pub struct Map {
     pub width: usize,
     pub height: usize,
     data: Vec<Vec<bool>>, // true = obstacle (#), false = walkable (.)
+    resource_manager: ResourceManager, // Stores resource positions
 }
 
 impl Map {
@@ -29,10 +33,41 @@ impl Map {
             })
             .collect();
 
-        let mut map = Self { width, height, data };
+        let mut map = Self {
+            width,
+            height,
+            data,
+            resource_manager: ResourceManager::new(),
+        };
         map.connect_isolated_regions();
         map
     }
+
+    /// Spawns a given number of resources at random walkable positions
+    pub fn spawn_resources(&mut self, count: usize, seed: u64) {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let walkable_positions: Vec<(usize, usize)> = self.data.iter()
+            .enumerate()
+            .flat_map(|(y, row)| {
+                row.iter().enumerate()
+                    .filter_map(move |(x, &cell)| if !cell { Some((x, y)) } else { None })
+            })
+            .collect();
+
+        let resource_types = [
+            ResourceType::Energy,
+            ResourceType::Minerals,
+            ResourceType::SciencePoints,
+        ];
+
+        walkable_positions.choose_multiple(&mut rng, count)
+            .for_each(|&(x, y)| {
+                let resource_type = resource_types.choose(&mut rng).unwrap();
+                let amount = rng.random_range(10..100);
+                self.resource_manager.add_resource(x, y, resource_type.clone(), amount);
+            });
+    }
+
 
     /// Find all connected walkable regions from a starting point
     ///
@@ -74,9 +109,14 @@ impl Map {
     ///
     /// # Returns
     /// An iterator yielding valid `(x, y)` neighbor coordinates
-    fn valid_neighbors(x: usize, y: usize, width: usize, height: usize) -> impl Iterator<Item = (usize, usize)> {
+    pub fn valid_neighbors(
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) -> impl Iterator<Item = (usize, usize)> {
         let directions = [(-1, 0), (1, 0), (0, -1), (0, 1)];
-        
+
         directions.into_iter().filter_map(move |(dx, dy)| {
             let new_x = x as isize + dx;
             let new_y = y as isize + dy;
@@ -138,15 +178,29 @@ impl Map {
     }
 }
 
+
+// Formats the `Map` as a grid of characters (`#` for obstacles, `.` for walkable tiles)
 impl fmt::Display for Map {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Formats the `Map` as a grid of characters (`#` for obstacles, `.` for walkable tiles)
-        self.data.iter().for_each(|row| {
-            row.iter().for_each(|&cell| {
-                let _ = write!(f, "{}", if cell { '#' } else { '.' });
-            });
-            let _ = writeln!(f);
-        });
+        let resources = self.resource_manager.get_all_resources();
+        
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let char = if self.data[y][x] {
+                    '#'
+                } else if let Some(resource) = resources.get(&(x, y)) {
+                    match resource.resource_type {
+                        ResourceType::Energy => 'E',
+                        ResourceType::Minerals => 'M',
+                        ResourceType::SciencePoints => 'S',
+                    }
+                } else {
+                    '.'
+                };
+                write!(f, "{}", char)?;
+            }
+            writeln!(f)?;
+        }
         Ok(())
     }
 }

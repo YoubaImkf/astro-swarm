@@ -1,2 +1,2 @@
 pub mod noise;
-pub mod ressources;
+pub mod resources;
