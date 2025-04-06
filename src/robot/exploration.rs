@@ -2,6 +2,7 @@ use std::sync::{Arc, RwLock};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
+
 use rand::Rng;
 
 use crate::communication::channels::RobotEvent;
@@ -20,7 +21,6 @@ impl ExplorationRobot {
         Self { id, x: start_x, y: start_y, energy: 100 }
     }
 
-    /// Starts the exploration loop
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
         thread::spawn(move || {
             let mut rng = rand::rng();
@@ -45,7 +45,7 @@ impl ExplorationRobot {
                     }
                     
                     // Simulate recharging
-                    thread::sleep(Duration::from_secs(2));
+                    thread::sleep(Duration::from_millis(800));
                     self.energy = 100;
                     continue;
                 }
