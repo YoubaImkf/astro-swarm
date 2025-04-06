@@ -30,11 +30,15 @@ impl ResourceManager {
         }
     }
 
-    pub fn add_resource(&mut self, x: usize, y: usize, resource_type: ResourceType, amount: u32) {
-        self.resources.insert((x, y), Resource::new(resource_type, amount));
+    pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {
+        &self.resources
     }
 
-    pub fn collect_resource(&mut self, x: usize, y: usize) -> Option<Resource> {
+    pub fn get_resource(&self, x: usize, y: usize) -> Option<&Resource> {
+        self.resources.get(&(x, y))
+    }
+
+    pub fn remove_resource(&mut self, x: usize, y: usize) -> Option<Resource> {
         self.resources.remove(&(x, y))
     }
 
@@ -42,7 +46,11 @@ impl ResourceManager {
         self.resources.contains_key(&(x, y))
     }
 
-    pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {
-        &self.resources
+    pub fn add_resource(&mut self, x: usize, y: usize, resource_type: ResourceType, amount: u32) {
+        self.resources.insert((x, y), Resource::new(resource_type, amount));
+    }
+
+    pub fn collect_resource(&mut self, x: usize, y: usize) -> Option<Resource> {
+        self.resources.remove(&(x, y))
     }
 }
