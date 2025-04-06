@@ -1,16 +1,152 @@
-use crate::map::noise;
+use std::sync::{Arc, RwLock, mpsc};
+use std::collections::HashMap;
+use rand::seq::{IndexedRandom, SliceRandom};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+
+use crate::map::noise::Map;
+use crate::robot::{RobotState, exploration::ExplorationRobot, collection::CollectionRobot};
+use crate::communication::channels::{RobotEvent, ResourceType};
 
 pub struct App {
-    pub map: noise::Map,
+    pub map: Arc<RwLock<Map>>,
+    pub exploration_robots: Vec<RobotState>,
+    pub collection_robots: Vec<RobotState>,
+    pub event_receiver: mpsc::Receiver<RobotEvent>,
+    event_sender: mpsc::Sender<RobotEvent>,
+    pub collected_resources: HashMap<ResourceType, u32>,
+    pub total_explored: usize,
 }
 
 impl App {
     /// Creates the map using the given seeds,
-    /// spawns resources and returns the App.
+    /// spawns resources and robots, and returns the App.
     pub fn new(width: usize, height: usize, map_seed: u32, resource_seed: u64) -> Self {
-        let mut map = noise::Map::new(width, height, map_seed);
-        map.spawn_resources(20, resource_seed);
-        Self { map }
+        // Create map
+        let mut map = Map::new(width, height, map_seed);
+        // Add resources
+        map.spawn_resources(width * height / 20, resource_seed);
+        
+        // Create communication channel
+        let (sender, receiver) = mpsc::channel();
+        
+        // Wrap map in Arc<RwLock> for thread safety
+        let map_arc = Arc::new(RwLock::new(map));
+        
+        // Create app
+        let mut app = Self {
+            map: map_arc.clone(),
+            exploration_robots: Vec::new(),
+            collection_robots: Vec::new(),
+            event_receiver: receiver,
+            event_sender: sender,
+            collected_resources: HashMap::new(),
+            total_explored: 0,
+        };
+        
+        // Spawn robots
+        app.spawn_robots(3, 2, map_seed as u64);
+        
+        app
+    }
+    
+    fn spawn_robots(&mut self, exploration_count: usize, collection_count: usize, seed: u64) {
+        let mut rng = StdRng::seed_from_u64(seed);
+        
+        // Find walkable positions for robots
+        let map_guard = self.map.read().unwrap();
+        let mut walkable_positions = Vec::new();
+        
+        for y in 0..map_guard.height {
+            for x in 0..map_guard.width {
+                if !map_guard.is_obstacle(x, y) && !map_guard.has_resource(x, y) {
+                    walkable_positions.push((x, y));
+                }
+            }
+        }
+        
+        drop(map_guard);
+        
+        // Ensure we have enough positions
+        if walkable_positions.len() < exploration_count + collection_count {
+            panic!("Not enough walkable positions for robots");
+        }
+        
+        // Shuffle positions
+        walkable_positions.shuffle(&mut rng);
+        
+        // Create exploration robots
+        for i in 0..exploration_count {
+            let (x, y) = walkable_positions[i];
+            let robot = ExplorationRobot::new(i as u32, x, y);
+            
+            // Store initial state
+            self.exploration_robots.push(RobotState::new(i as u32, x, y));
+            
+            // Start robot thread
+            let sender = self.event_sender.clone();
+            let map_clone = self.map.clone();
+            robot.start(sender, map_clone);
+        }
+        
+        // Create collection robots
+        for i in 0..collection_count {
+            let (x, y) = walkable_positions[exploration_count + i];
+            let mut robot = CollectionRobot::new((exploration_count + i) as u32, x, y);
+            
+            // Assign target resource type
+            let resource_types = [
+                ResourceType::Energy,
+                ResourceType::Minerals,
+                ResourceType::SciencePoints,
+            ];
+            
+            if let Some(resource_type) = resource_types.choose(&mut rng) {
+                robot.set_target_resource(resource_type.clone());
+            }
+            
+            // Store initial state
+            self.collection_robots.push(RobotState::new((exploration_count + i) as u32, x, y));
+            
+            // Start robot thread
+            let sender = self.event_sender.clone();
+            let map_clone = self.map.clone();
+            robot.start(sender, map_clone);
+        }
+    }
+    
+    /// Update app state by processing events
+    pub fn update(&mut self) {
+        // Process all pending events
+        while let Ok(event) = self.event_receiver.try_recv() {
+            match event {
+                RobotEvent::ExplorationData { id, x, y, is_obstacle: _ } => {
+                    // Update exploration robot position
+                    if let Some(robot) = self.exploration_robots.iter_mut().find(|r| r.id == id) {
+                        robot.x = x;
+                        robot.y = y;
+                    }
+                    
+                    self.total_explored += 1;
+                },
+                RobotEvent::CollectionData { id, x, y, resource_type, amount } => {
+                    // Update collection robot position
+                    if let Some(robot) = self.collection_robots.iter_mut().find(|r| r.id == id) {
+                        robot.x = x;
+                        robot.y = y;
+                    }
+                    
+                    // Add collected resources
+                    if let Some(resource_type) = resource_type {
+                        *self.collected_resources.entry(resource_type).or_insert(0) += amount;
+                    }
+                },
+                RobotEvent::LowEnergy {id, remaining } => {
+                },
+                RobotEvent::ReturnToBase {id  } => {
+                }
+            }
+        }
     }
 
     pub fn quit(&self) -> bool {
