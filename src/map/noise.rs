@@ -176,6 +176,56 @@ impl Map {
             y += if y < target_y { 1 } else { -1 };
         }
     }
+
+    pub fn get_resource(&self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
+        self.resource_manager.get_resource(x, y)
+            .map(|resource| {
+                let channel_resource_type = match resource.resource_type {
+                    crate::map::resources::ResourceType::Energy => 
+                        crate::communication::channels::ResourceType::Energy,
+                    crate::map::resources::ResourceType::Minerals => 
+                        crate::communication::channels::ResourceType::Minerals,
+                    crate::map::resources::ResourceType::SciencePoints => 
+                        crate::communication::channels::ResourceType::SciencePoints,
+                };
+                (channel_resource_type, resource.amount)
+            })
+    }
+
+    /// Removes a resource at the given coordinates
+    ///
+    /// # Parameters
+    /// - `x`, `y`: The coordinates to remove a resource from
+    ///
+    /// # Returns
+    /// Some((resource_type, amount)) if a resource was removed, None if no resource existed
+    pub fn remove_resource(&mut self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
+        self.resource_manager.remove_resource(x, y)
+            .map(|resource| {
+                let channel_resource_type = match resource.resource_type {
+                    crate::map::resources::ResourceType::Energy => 
+                        crate::communication::channels::ResourceType::Energy,
+                    crate::map::resources::ResourceType::Minerals => 
+                        crate::communication::channels::ResourceType::Minerals,
+                    crate::map::resources::ResourceType::SciencePoints => 
+                        crate::communication::channels::ResourceType::SciencePoints,
+                };
+                (channel_resource_type, resource.amount)
+            })
+    }
+
+    /// Checks if the given coordinates contain a resource
+    pub fn has_resource(&self, x: usize, y: usize) -> bool {
+        self.resource_manager.has_resource(x, y)
+    }
+
+    /// Checks if the position contains an obstacle
+    pub fn is_obstacle(&self, x: usize, y: usize) -> bool {
+        if x >= self.width || y >= self.height {
+            return true; // Out of bounds is considered an obstacle
+        }
+        self.data[y][x]
+    }
 }
 
 
