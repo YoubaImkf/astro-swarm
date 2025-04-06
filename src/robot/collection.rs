@@ -2,6 +2,7 @@ use std::sync::{Arc, RwLock};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
+
 use rand::Rng;
 
 use crate::communication::channels::{RobotEvent, ResourceType};
@@ -21,12 +22,10 @@ impl CollectionRobot {
         }
     }
     
-    /// Set what type of resource this robot should prioritize collecting
     pub fn set_target_resource(&mut self, resource_type: ResourceType) {
         self.target_resource = Some(resource_type);
     }
 
-    /// Start the collection robot in its own thread
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
         thread::spawn(move || {
             let mut rng = rand::rng();
@@ -50,76 +49,84 @@ impl CollectionRobot {
                         break;
                     }
                     
-                    // Simulate returning to base to recharge and offload resources
-                    thread::sleep(Duration::from_secs(3));
                     self.state.energy = 100;
                     self.state.collected_resources.clear();
                     continue;
                 }
                 
-                // Move in a random direction
                 let direction = movement::Direction::random();
-                let map_read = map.read().unwrap();
-                let (new_x, new_y) = movement::next_position(
-                    self.state.x, 
-                    self.state.y, 
-                    &direction, 
-                    &map_read
-                );
-                
-                // Check if move is valid
-                if movement::is_valid_move(new_x, new_y, &map_read) {
+
+                let resource_info = {
+                    let map_read = map.read().unwrap();
+                    let (new_x, new_y) = movement::next_position(
+                        self.state.x, 
+                        self.state.y, 
+                        &direction, 
+                        &map_read
+                    );
+                    
+                    if !movement::is_valid_move(new_x, new_y, &map_read) {
+                        drop(map_read);
+                        continue;
+                    }
+                    
                     self.state.x = new_x;
                     self.state.y = new_y;
                     self.state.use_energy(2); // Collection robots use more energy to move
                     
-                    // Check if there's a resource at this position
-                    if let Some((resource_type, amount)) = map_read.get_resource(new_x, new_y) {
-                        // Only collect if we have capacity and either no target or matching target
-                        if let Some(target) = &self.target_resource {
-                            if target == &resource_type && self.state.collect_resource(resource_type.clone(), amount) {
-                                let event = RobotEvent::CollectionData {
-                                    id: self.state.id,
-                                    x: new_x,
-                                    y: new_y,
-                                    resource_type: Some(resource_type),
-                                    amount,
-                                };
-                                if sender.send(event).is_err() {
-                                    break;
-                                }
-                            }
-                        } else if self.state.collect_resource(resource_type.clone(), amount) {
-                            let event = RobotEvent::CollectionData {
-                                id: self.state.id,
-                                x: new_x,
-                                y: new_y,
-                                resource_type: Some(resource_type),
-                                amount,
-                            };
-                            if sender.send(event).is_err() {
-                                break;
-                            }
-                        }
-                    } else {
-                        // Report that no resource was found
+                    let resource_info = map_read.get_resource(new_x, new_y);
+                    drop(map_read);
+                    resource_info
+                };
+                
+                // Handle resource collection if found
+                if let Some((resource_type, amount)) = resource_info {
+                    let should_collect = self.target_resource.is_none() || 
+                                        self.target_resource.as_ref() == Some(&resource_type);
+                    
+                    if should_collect && self.state.collect_resource(resource_type.clone(), amount) {
+                        let mut map_write = map.write().unwrap();
+                        map_write.remove_resource(self.state.x, self.state.y);
+                        drop(map_write);
+                        
                         let event = RobotEvent::CollectionData {
                             id: self.state.id,
-                            x: new_x,
-                            y: new_y,
-                            resource_type: None,
-                            amount: 0,
+                            x: self.state.x,
+                            y: self.state.y,
+                            resource_type: Some(resource_type),
+                            amount,
+                        };
+                        if sender.send(event).is_err() {
+                            break;
+                        }
+                    } else {
+                        let event = RobotEvent::CollectionData {
+                            id: self.state.id,
+                            x: self.state.x,
+                            y: self.state.y,
+                            resource_type: Some(resource_type),
+                            amount: 0, // Zero amount indicates not collected
                         };
                         if sender.send(event).is_err() {
                             break;
                         }
                     }
+                } else {
+                    // No resource found, just report movement
+                    let event = RobotEvent::CollectionData {
+                        id: self.state.id,
+                        x: self.state.x,
+                        y: self.state.y,
+                        resource_type: None,
+                        amount: 0,
+                    };
+                    if sender.send(event).is_err() {
+                        break;
+                    }
                 }
                 
-                drop(map_read); // Release the lock
-                
                 // Sleep to simulate processing time
-                thread::sleep(Duration::from_millis(rng.random_range(800..2000)));
+                thread::sleep(Duration::from_millis(rng.random_range(500..1000)));
             }
         });
     }
