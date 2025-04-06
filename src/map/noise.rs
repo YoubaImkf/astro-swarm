@@ -192,26 +192,40 @@ impl Map {
             })
     }
 
-    /// Removes a resource at the given coordinates
+    /// Removes a resource at the given coordinates if it's consumable (Energy, Minerals)
+    /// For SciencePoints (non-consumable), just returns the resource info without removing it
     ///
     /// # Parameters
-    /// - `x`, `y`: The coordinates to remove a resource from
+    /// - `x`, `y`: The coordinates to get/remove a resource from
     ///
     /// # Returns
-    /// Some((resource_type, amount)) if a resource was removed, None if no resource existed
+    /// Some((resource_type, amount)) if a resource was found, None if no resource existed
     pub fn remove_resource(&mut self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
-        self.resource_manager.remove_resource(x, y)
-            .map(|resource| {
-                let channel_resource_type = match resource.resource_type {
-                    crate::map::resources::ResourceType::Energy => 
-                        crate::communication::channels::ResourceType::Energy,
-                    crate::map::resources::ResourceType::Minerals => 
-                        crate::communication::channels::ResourceType::Minerals,
-                    crate::map::resources::ResourceType::SciencePoints => 
-                        crate::communication::channels::ResourceType::SciencePoints,
-                };
-                (channel_resource_type, resource.amount)
-            })
+        if let Some(resource) = self.resource_manager.get_resource(x, y) {
+            let resource_clone = resource.clone();
+            let is_consumable = match resource_clone.resource_type {
+                crate::map::resources::ResourceType::Energy | 
+                crate::map::resources::ResourceType::Minerals => true,
+                crate::map::resources::ResourceType::SciencePoints => false,
+            };
+            
+            let channel_resource_type = match resource_clone.resource_type {
+                crate::map::resources::ResourceType::Energy => 
+                    crate::communication::channels::ResourceType::Energy,
+                crate::map::resources::ResourceType::Minerals => 
+                    crate::communication::channels::ResourceType::Minerals,
+                crate::map::resources::ResourceType::SciencePoints => 
+                    crate::communication::channels::ResourceType::SciencePoints,
+            };
+            
+            if is_consumable {
+                self.resource_manager.remove_resource(x, y);
+            }
+            
+            Some((channel_resource_type, resource_clone.amount))
+        } else {
+            None
+        }
     }
 
     /// Checks if the given coordinates contain a resource
