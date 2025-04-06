@@ -32,9 +32,10 @@ impl ExplorationRobot {
                     id: self.id,
                     x: self.x,
                     y: self.y,
+                    is_obstacle: false,
                 };
                 if sender.send(event).is_err() {
-                    break; // Exit if the receiver is dropped
+                    break;
                 }
 
                 thread::sleep(Duration::from_secs(1));

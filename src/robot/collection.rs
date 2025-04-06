@@ -29,7 +29,7 @@ impl CollectionRobot {
     /// Start the collection robot in its own thread
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
         thread::spawn(move || {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             
             loop {
                 // Check energy levels
