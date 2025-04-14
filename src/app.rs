@@ -1,10 +1,11 @@
 use std::sync::{Arc, RwLock, mpsc};
 use std::collections::HashMap;
 use rand::seq::{IndexedRandom, SliceRandom};
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 
 use crate::map::noise::Map;
+use crate::robot::scientific::ScientificRobot;
 use crate::robot::{RobotState, exploration::ExplorationRobot, collection::CollectionRobot};
 use crate::communication::channels::{RobotEvent, ResourceType};
 
@@ -12,9 +13,13 @@ pub struct App {
     pub map: Arc<RwLock<Map>>,
     pub exploration_robots: Vec<RobotState>,
     pub collection_robots: Vec<RobotState>,
+    pub scientific_robots: Vec<RobotState>, 
+
     pub event_receiver: mpsc::Receiver<RobotEvent>,
     event_sender: mpsc::Sender<RobotEvent>,
+
     pub collected_resources: HashMap<ResourceType, u32>,
+    pub scientific_data: u32,
     pub total_explored: usize,
 }
 
@@ -22,15 +27,12 @@ impl App {
     /// Creates the map using the given seeds,
     /// spawns resources and robots, and returns the App.
     pub fn new(width: usize, height: usize, map_seed: u32, resource_seed: u64) -> Self {
-        // Create map
         let mut map = Map::new(width, height, map_seed);
-        // Add resources
-        map.spawn_resources(width * height / 20, resource_seed);
         
-        // Create communication channel
+        map.spawn_resources(width * height / 30, resource_seed);
+        
         let (sender, receiver) = mpsc::channel();
         
-        // Wrap map in Arc<RwLock> for thread safety
         let map_arc = Arc::new(RwLock::new(map));
         
         // Create app
@@ -38,19 +40,20 @@ impl App {
             map: map_arc.clone(),
             exploration_robots: Vec::new(),
             collection_robots: Vec::new(),
+            scientific_robots: Vec::new(),
             event_receiver: receiver,
             event_sender: sender,
             collected_resources: HashMap::new(),
             total_explored: 0,
+            scientific_data: 0,
         };
         
-        // Spawn robots
-        app.spawn_robots(3, 2, map_seed as u64);
+        app.spawn_robots(3, 2, 1, map_seed.into());
         
         app
     }
     
-    fn spawn_robots(&mut self, exploration_count: usize, collection_count: usize, seed: u64) {
+    fn spawn_robots(&mut self, exploration_count: usize, collection_count: usize,  scientific_count: usize, seed: u64) {
         let mut rng = StdRng::seed_from_u64(seed);
         
         // Find walkable positions for robots
@@ -112,6 +115,39 @@ impl App {
             let sender = self.event_sender.clone();
             let map_clone = self.map.clone();
             robot.start(sender, map_clone);
+        }  
+
+                // Create scientific robots with specialized modules
+        let scientific_modules = vec![
+            ("Chemical Analyzer", 15, 2),
+            ("Drill", 10, 3),
+            ("High-Res Camera", 20, 1),
+            ("Spectrometer", 25, 2),
+            ("Sample Container", 5, 1),
+        ];
+        
+        for i in 0..scientific_count {
+            let (x, y) = walkable_positions[exploration_count + collection_count + i];
+            let mut robot = ScientificRobot::new((exploration_count + collection_count + i) as u32, x, y);
+            
+            // Add 2-3 random modules to each scientific robot
+            let module_count = rng.random_range(2..=3);
+            let modules = scientific_modules.choose_multiple(&mut rng, module_count);
+            
+            for &(name, bonus, cost) in modules {
+                robot.add_module(name, bonus, cost);
+            }
+            
+            // Set target to science points
+            robot.set_target_resource(ResourceType::SciencePoints);
+            
+            // Store initial state
+            self.scientific_robots.push(RobotState::new((exploration_count + collection_count + i) as u32, x, y));
+            
+            // Start robot thread
+            let sender = self.event_sender.clone();
+            let map_clone = self.map.clone();
+            robot.start(sender, map_clone);
         }
     }
     
@@ -140,6 +176,16 @@ impl App {
                     if let Some(resource_type) = resource_type {
                         *self.collected_resources.entry(resource_type).or_insert(0) += amount;
                     }
+                },
+                RobotEvent::ScienceData { id, x, y, resource_type, amount, modules } => {
+                    // Update scientific robot position
+                    if let Some(robot) = self.scientific_robots.iter_mut().find(|r| r.id == id) {
+                        robot.x = x;
+                        robot.y = y;
+                    }
+                    
+                    // Add collected scientific data
+                    self.scientific_data += amount;
                 },
                 RobotEvent::LowEnergy {id, remaining } => {
                 },

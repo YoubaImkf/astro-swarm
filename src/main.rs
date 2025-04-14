@@ -7,7 +7,7 @@ use ratatui::{prelude::Backend, Terminal};
 use std::{io, time::{Duration, Instant}};
 
 fn main() -> std::io::Result<()> {
-    let mut app = App::new(110, 15, 34, 12345);
+    let mut app = App::new(90, 15, 34, 12345);
     let mut terminal_manager = TerminalManager::new()?;
 
     run_app(&mut app, terminal_manager.get_terminal())?;
