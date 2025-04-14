@@ -29,6 +29,15 @@ pub enum RobotEvent {
     ReturnToBase {
         id: u32,
     },
+
+    ScienceData {
+        id: u32,
+        x: usize,
+        y: usize,
+        resource_type: ResourceType,
+        amount: u32,
+        modules: Vec<String>,
+    }
 }
 
 /// Types of resources robots can collect
