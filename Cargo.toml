@@ -1,0 +1,14 @@
+[package]
+name = "astro-swarm"
+authors = ['only me lol']
+license = "MIT"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossterm = "0.28.1"
+ratatui = "0.29.0"
+noise = "0.9"
+color-eyre = "0.6.3"
+rand = "0.9.0"
+chrono = "0.4.40"
