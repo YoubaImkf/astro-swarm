@@ -57,6 +57,19 @@ pub fn render_map_with_robots(frame: &mut Frame, area: Rect, app: &App) {
             }
         }
     }
+
+    // Add scientific robots (represented as 'S')
+    for robot in &app.scientific_robots {
+        if robot.y < display_lines.len() {
+            let line = &mut display_lines[robot.y];
+            let mut spans = line.spans.clone();
+            
+            if robot.x < spans.len() {
+                spans[robot.x] = Span::styled("S", Style::default().fg(Color::Cyan));
+                *line = Line::from(spans);
+            }
+        }
+    }
     
     let paragraph = create_map_widget(display_lines);
     frame.render_widget(paragraph, area);
@@ -77,12 +90,15 @@ fn render_sidebar_statistics(frame: &mut Frame, area: Rect, app: &App) {
     }
     
     items.push(ListItem::new(""));
+    items.push(ListItem::new(format!("Scientific Data: {}", app.scientific_data)));
+    items.push(ListItem::new(""));
     items.push(ListItem::new(format!("Areas Explored: {}", app.total_explored)));
     items.push(ListItem::new(""));
     items.push(ListItem::new(format!("Robots Active: {}", 
         app.exploration_robots.len() + app.collection_robots.len())));
     items.push(ListItem::new(format!("  Explorers: {}", app.exploration_robots.len())));
     items.push(ListItem::new(format!("  Collectors: {}", app.collection_robots.len())));
+    items.push(ListItem::new(format!("  Scientists: {}", app.scientific_robots.len())));
     
     let stats_list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Statistics"));
