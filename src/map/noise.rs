@@ -1,9 +1,9 @@
 use noise::{NoiseFn, Perlin};
 use rand::prelude::*;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
-use super::resources::{ResourceManager, ResourceType};
+use super::resources::{Resource, ResourceManager, ResourceType};
 
 pub struct Map {
     pub width: usize,
@@ -192,6 +192,7 @@ impl Map {
             })
     }
 
+
     /// Removes a resource at the given coordinates if it's consumable (Energy, Minerals)
     /// For SciencePoints (non-consumable), just returns the resource info without removing it
     ///
@@ -226,6 +227,10 @@ impl Map {
         } else {
             None
         }
+    }
+
+    pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {
+        self.resource_manager.get_all_resources()
     }
 
     /// Checks if the given coordinates contain a resource
