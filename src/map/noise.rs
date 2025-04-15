@@ -8,8 +8,9 @@ use super::resources::{Resource, ResourceManager, ResourceType};
 pub struct Map {
     pub width: usize,
     pub height: usize,
+    pub station_area: Vec<(usize, usize)>,
     data: Vec<Vec<bool>>, // true = obstacle (#), false = walkable (.)
-    resource_manager: ResourceManager, // Stores resource positions
+    resource_manager: ResourceManager,
 }
 
 impl Map {
@@ -25,7 +26,7 @@ impl Map {
     pub fn new(width: usize, height: usize, seed: u32) -> Self {
         let perlin = Perlin::new(seed);
 
-        let data: Vec<Vec<bool>> = (0..height)
+        let data= (0..height)
             .map(|y| {
                 (0..width)
                     .map(|x| perlin.get([x as f64 / 10.0, y as f64 / 10.0]) > 0.0)
@@ -33,41 +34,74 @@ impl Map {
             })
             .collect();
 
+        let cx = width / 2;
+        let cy = height / 2;
+        let mut station_area = Vec::new();
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let x = (cx as isize + dx) as usize;
+                let y = (cy as isize + dy) as usize;
+                station_area.push((x, y));
+            }
+        }
+
         let mut map = Self {
             width,
             height,
             data,
+            station_area,
             resource_manager: ResourceManager::new(),
         };
+
+        // Ensure station is walkable
+        for &(x, y) in &map.station_area {
+            map.data[y][x] = false;
+        }
+
         map.connect_isolated_regions();
         map
     }
 
-    /// Spawns a given number of resources at random walkable positions
+    /// Spawns resources at random walkable positions
     pub fn spawn_resources(&mut self, count: usize, seed: u64) {
         let mut rng = StdRng::seed_from_u64(seed);
-        let walkable_positions: Vec<(usize, usize)> = self.data.iter()
-            .enumerate()
+        let walkable_positions: Vec<_> = self.data.iter().enumerate()
             .flat_map(|(y, row)| {
                 row.iter().enumerate()
                     .filter_map(move |(x, &cell)| if !cell { Some((x, y)) } else { None })
             })
             .collect();
-
-        let resource_types = [
-            ResourceType::Energy,
-            ResourceType::Minerals,
-            ResourceType::SciencePoints,
-        ];
-
-        walkable_positions.choose_multiple(&mut rng, count)
-            .for_each(|&(x, y)| {
-                let resource_type = resource_types.choose(&mut rng).unwrap();
-                let amount = rng.random_range(10..100);
-                self.resource_manager.add_resource(x, y, resource_type.clone(), amount);
-            });
+        let resource_types = [ResourceType::Energy, ResourceType::Minerals, ResourceType::SciencePoints];
+        for &(x, y) in walkable_positions.choose_multiple(&mut rng, count) {
+            let resource_type = resource_types.choose(&mut rng).unwrap().clone();
+            let amount = rng.random_range(10..100);
+            self.resource_manager.add_resource(x, y, resource_type, amount);
+        }
     }
 
+    /// Ensures all walkable areas are connected
+    fn connect_isolated_regions(&mut self) {
+        let mut visited = vec![vec![false; self.width]; self.height];
+        let mut regions = Vec::new();
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if !self.data[y][x] && !visited[y][x] {
+                    regions.push(self.collect_connected_walkable_cells(x, y, &mut visited));
+                }
+            }
+        }
+
+        if regions.len() <= 1 {
+            return;
+        }
+        let main_region = &regions[0];
+        for region in regions.iter().skip(1) {
+            let (main_x, main_y) = main_region[0];
+            let (other_x, other_y) = region[0];
+            self.create_path(main_x, main_y, other_x, other_y);
+        }
+    }
 
     /// Find all connected walkable regions from a starting point
     ///
@@ -91,12 +125,12 @@ impl Map {
 
         while let Some((x, y)) = queue.pop_front() {
             region.push((x, y));
-            Self::valid_neighbors(x, y, self.width, self.height).for_each(|(nx, ny)| {
+            for (nx, ny) in Self::valid_neighbors(x, y, self.width, self.height) {
                 if !visited[ny][nx] && !self.data[ny][nx] {
                     visited[ny][nx] = true;
                     queue.push_back((nx, ny));
                 }
-            });
+            }
         }
         region
     }
@@ -128,35 +162,6 @@ impl Map {
         })
     }
 
-    /// Ensures all walkable areas are connected by creating paths between isolated regions
-    fn connect_isolated_regions(&mut self) {
-        let mut visited = vec![vec![false; self.width]; self.height];
-
-        // Identify all separate walkable regions.
-        let mut regions: Vec<Vec<(usize, usize)>> = (0..self.height)
-            .flat_map(|y| (0..self.width).map(move |x| (x, y)))
-            .filter_map(|(x, y)| {
-                if !self.data[y][x] && !visited[y][x] {
-                    Some(self.collect_connected_walkable_cells(x, y, &mut visited))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        // If there's only one region, the map is already fully connected
-        if regions.len() <= 1 {
-            return;
-        }
-
-        // Connect every other region to the first region
-        let main_region = regions.remove(0);
-        regions.into_iter().for_each(|region| {
-            let (main_x, main_y) = main_region[0];
-            let (other_x, other_y) = region[0];
-            self.create_path(main_x, main_y, other_x, other_y);
-        });
-    }
 
     /// Creates a path between two points in the map.
     ///
@@ -178,18 +183,14 @@ impl Map {
     }
 
     pub fn get_resource(&self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
-        self.resource_manager.get_resource(x, y)
-            .map(|resource| {
-                let channel_resource_type = match resource.resource_type {
-                    crate::map::resources::ResourceType::Energy => 
-                        crate::communication::channels::ResourceType::Energy,
-                    crate::map::resources::ResourceType::Minerals => 
-                        crate::communication::channels::ResourceType::Minerals,
-                    crate::map::resources::ResourceType::SciencePoints => 
-                        crate::communication::channels::ResourceType::SciencePoints,
-                };
-                (channel_resource_type, resource.amount)
-            })
+        self.resource_manager.get_resource(x, y).map(|ressource| {
+            let channel_resource_type = match ressource.resource_type {
+                ResourceType::Energy => crate::communication::channels::ResourceType::Energy,
+                ResourceType::Minerals => crate::communication::channels::ResourceType::Minerals,
+                ResourceType::SciencePoints => crate::communication::channels::ResourceType::SciencePoints,
+            };
+            (channel_resource_type, ressource.amount)
+        })
     }
 
 
@@ -202,48 +203,42 @@ impl Map {
     /// # Returns
     /// Some((resource_type, amount)) if a resource was found, None if no resource existed
     pub fn remove_resource(&mut self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
-        if let Some(resource) = self.resource_manager.get_resource(x, y) {
-            let resource_clone = resource.clone();
-            let is_consumable = match resource_clone.resource_type {
-                crate::map::resources::ResourceType::Energy | 
-                crate::map::resources::ResourceType::Minerals => true,
-                crate::map::resources::ResourceType::SciencePoints => false,
-            };
-            
-            let channel_resource_type = match resource_clone.resource_type {
-                crate::map::resources::ResourceType::Energy => 
-                    crate::communication::channels::ResourceType::Energy,
-                crate::map::resources::ResourceType::Minerals => 
-                    crate::communication::channels::ResourceType::Minerals,
-                crate::map::resources::ResourceType::SciencePoints => 
-                    crate::communication::channels::ResourceType::SciencePoints,
-            };
-            
-            if is_consumable {
-                self.resource_manager.remove_resource(x, y);
-            }
-            
-            Some((channel_resource_type, resource_clone.amount))
-        } else {
-            None
-        }
-    }
+        let (r_type, amount) = {
+            let resource = self.resource_manager.get_resource(x, y)?;
+            (resource.resource_type.clone(), resource.amount)
+        };
 
+        let is_consumable = matches!(r_type, ResourceType::Energy | ResourceType::Minerals);
+        let channel_resource_type = match r_type {
+            ResourceType::Energy => crate::communication::channels::ResourceType::Energy,
+            ResourceType::Minerals => crate::communication::channels::ResourceType::Minerals,
+            ResourceType::SciencePoints => crate::communication::channels::ResourceType::SciencePoints,
+        };
+
+        if is_consumable {
+            self.resource_manager.remove_resource(x, y);
+        }
+
+        Some((channel_resource_type, amount))
+    }
+    
     pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {
         self.resource_manager.get_all_resources()
     }
 
-    /// Checks if the given coordinates contain a resource
     pub fn has_resource(&self, x: usize, y: usize) -> bool {
         self.resource_manager.has_resource(x, y)
     }
 
-    /// Checks if the position contains an obstacle
     pub fn is_obstacle(&self, x: usize, y: usize) -> bool {
         if x >= self.width || y >= self.height {
             return true; // Out of bounds is considered an obstacle
         }
         self.data[y][x]
+    }
+
+    pub fn is_station(&self, x: usize, y: usize) -> bool {
+        self.station_area.contains(&(x, y))
     }
 }
 
@@ -255,18 +250,20 @@ impl fmt::Display for Map {
         
         for y in 0..self.height {
             for x in 0..self.width {
-                let char = if self.data[y][x] {
-                    '#'
+                let symbol = if self.is_station(x, y) {
+                    '⌂'
+                } else if self.data[y][x] {
+                    '█'
                 } else if let Some(resource) = resources.get(&(x, y)) {
                     match resource.resource_type {
-                        ResourceType::Energy => 'E',
-                        ResourceType::Minerals => 'M',
-                        ResourceType::SciencePoints => 'S',
+                        ResourceType::Energy => 'E', // ⚡
+                        ResourceType::Minerals => 'M', // ⛏
+                        ResourceType::SciencePoints => 'S', // 🧪
                     }
                 } else {
                     '.'
                 };
-                write!(f, "{}", char)?;
+                write!(f, "{symbol}")?;
             }
             writeln!(f)?;
         }

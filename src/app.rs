@@ -59,6 +59,8 @@ impl App {
         // Find walkable positions for robots
         let map_guard = self.map.read().unwrap();
         let mut walkable_positions = Vec::new();
+        let map_width = map_guard.width;
+        let map_height = map_guard.height;
         
         for y in 0..map_guard.height {
             for x in 0..map_guard.width {
@@ -70,7 +72,6 @@ impl App {
         
         drop(map_guard);
         
-        // Ensure we have enough positions
         if walkable_positions.len() < exploration_count + collection_count {
             panic!("Not enough walkable positions for robots");
         }
@@ -81,7 +82,7 @@ impl App {
         // Create exploration robots
         for i in 0..exploration_count {
             let (x, y) = walkable_positions[i];
-            let robot = ExplorationRobot::new(i as u32, x, y);
+            let robot = ExplorationRobot::new(i as u32, x, y, map_width, map_height);
             
             // Store initial state
             self.exploration_robots.push(RobotState::new(i as u32, x, y));
@@ -95,7 +96,7 @@ impl App {
         // Create collection robots
         for i in 0..collection_count {
             let (x, y) = walkable_positions[exploration_count + i];
-            let mut robot = CollectionRobot::new((exploration_count + i) as u32, x, y);
+            let mut robot = CollectionRobot::new((exploration_count + i) as u32, x, y, map_width, map_height);
             
             // Assign target resource type
             let resource_types = [
@@ -117,7 +118,7 @@ impl App {
             robot.start(sender, map_clone);
         }  
 
-                // Create scientific robots with specialized modules
+        // Create scientific robots with specialized modules
         let scientific_modules = vec![
             ("Chemical Analyzer", 15, 2),
             ("Drill", 10, 3),
@@ -128,7 +129,7 @@ impl App {
         
         for i in 0..scientific_count {
             let (x, y) = walkable_positions[exploration_count + collection_count + i];
-            let mut robot = ScientificRobot::new((exploration_count + collection_count + i) as u32, x, y);
+            let mut robot = ScientificRobot::new((exploration_count + collection_count + i) as u32, x, y, map_width, map_height);
             
             // Add 2-3 random modules to each scientific robot
             let module_count = rng.random_range(2..=3);
