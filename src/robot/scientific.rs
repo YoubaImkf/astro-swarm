@@ -8,6 +8,7 @@ use rand::Rng;
 use crate::communication::channels::{RobotEvent, ResourceType};
 use crate::map::noise::Map;
 use super::{RobotState, movement};
+use super::knowledge::RobotKnowledge;
 
 pub struct Module {
     pub name: String,
@@ -19,14 +20,16 @@ pub struct ScientificRobot {
     state: RobotState,
     modules: Vec<Module>,
     target_resource: Option<ResourceType>,
+    pub knowledge: RobotKnowledge,
 }
 
 impl ScientificRobot {
-    pub fn new(id: u32, start_x: usize, start_y: usize) -> Self {
+    pub fn new(id: u32, start_x: usize, start_y: usize, map_width: usize, map_height: usize) -> Self {
         Self {
             state: RobotState::new(id, start_x, start_y),
             modules: Vec::new(),
             target_resource: None,
+            knowledge: RobotKnowledge::new(map_width, map_height),
         }
     }
     
@@ -53,9 +56,13 @@ impl ScientificRobot {
         base_value + module_bonus
     }
 
+    fn update_knowledge(&mut self, map: &Map) {
+        self.knowledge.observe_and_update(self.state.x, self.state.y, map);
+    }
+
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
         thread::spawn(move || {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             
             loop {
                 // Check energy levels
@@ -106,7 +113,10 @@ impl ScientificRobot {
                     
                     self.state.x = new_x;
                     self.state.y = new_y;
-                    
+
+                    // Update robot knowledge after moving
+                    self.update_knowledge(&map_read);
+
                     // Scientists use more energy due to complex equipment
                     let module_energy_cost: u32 = self.modules.iter()
                         .map(|module| module.energy_cost)
@@ -169,7 +179,7 @@ impl ScientificRobot {
         science_points.into_iter().min_by_key(|(x, y)| {
             let dx = *x as isize - self.state.x as isize;
             let dy = *y as isize - self.state.y as isize;
-            (dx * dx + dy * dy) as usize  // Square distance
+            (dx * dx + dy * dy) as usize // Square distance
         })
     }
     

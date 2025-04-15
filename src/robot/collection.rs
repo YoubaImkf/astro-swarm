@@ -8,22 +8,29 @@ use rand::Rng;
 use crate::communication::channels::{RobotEvent, ResourceType};
 use crate::map::noise::Map;
 use super::{RobotState, movement};
+use super::knowledge::RobotKnowledge;
 
 pub struct CollectionRobot {
     state: RobotState,
     target_resource: Option<ResourceType>,
+    pub knowledge: RobotKnowledge,
 }
 
 impl CollectionRobot {
-    pub fn new(id: u32, start_x: usize, start_y: usize) -> Self {
+    pub fn new(id: u32, start_x: usize, start_y: usize, map_width: usize, map_height: usize) -> Self {
         Self {
             state: RobotState::new(id, start_x, start_y),
             target_resource: None,
+            knowledge: RobotKnowledge::new(map_width, map_height),
         }
     }
     
     pub fn set_target_resource(&mut self, resource_type: ResourceType) {
         self.target_resource = Some(resource_type);
+    }
+
+    fn update_knowledge(&mut self, map: &Map) {
+        self.knowledge.observe_and_update(self.state.x, self.state.y, map);
     }
 
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
@@ -73,7 +80,10 @@ impl CollectionRobot {
                     self.state.x = new_x;
                     self.state.y = new_y;
                     self.state.use_energy(2); // Collection robots use more energy to move
-                    
+
+                    // Update robot knowledge after moving
+                    self.update_knowledge(&map_read);                    
+
                     let resource_info = map_read.get_resource(new_x, new_y);
                     drop(map_read);
                     resource_info
