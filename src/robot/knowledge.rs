@@ -10,7 +10,7 @@ pub enum TileInfo {
     Station,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RobotKnowledge {
     pub map: HashMap<(usize, usize), TileInfo>,
     pub width: usize,
