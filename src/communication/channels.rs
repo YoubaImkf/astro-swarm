@@ -1,16 +1,14 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
+use crate::robot::knowledge::RobotKnowledge;
 
 #[derive(Debug, Clone)]
 pub enum RobotEvent {
-    /// Sent when a robot explores a new tile
     ExplorationData {
         id: u32,
         x: usize,
         y: usize,
         is_obstacle: bool,
     },
-    
-    /// Sent when a robot attempts to collect a resource
     CollectionData {
         id: u32,
         x: usize,
@@ -18,18 +16,6 @@ pub enum RobotEvent {
         resource_type: Option<ResourceType>,
         amount: u32,
     },
-    
-    /// Sent when a robot's energy is low
-    LowEnergy {
-        id: u32,
-        remaining: u32,
-    },
-    
-    /// Sent when a robot returns to base
-    ReturnToBase {
-        id: u32,
-    },
-
     ScienceData {
         id: u32,
         x: usize,
@@ -37,7 +23,26 @@ pub enum RobotEvent {
         resource_type: ResourceType,
         amount: u32,
         modules: Vec<String>,
-    }
+    },
+    LowEnergy {
+        id: u32,
+        remaining: u32,
+    },
+    ReturnToBase {
+        id: u32,
+    },
+    ArrivedAtStation {
+        id: u32,
+        knowledge: RobotKnowledge,
+    },
+    MergeComplete {
+        id: u32,
+        merged_knowledge: RobotKnowledge,
+    },
+    Shutdown {
+        id: u32,
+        reason: String,
+    },
 }
 
 /// Types of resources robots can collect
