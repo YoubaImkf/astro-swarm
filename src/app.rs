@@ -158,40 +158,43 @@ impl App {
         while let Ok(event) = self.event_receiver.try_recv() {
             match event {
                 RobotEvent::ExplorationData { id, x, y, is_obstacle: _ } => {
-                    // Update exploration robot position
-                    if let Some(robot) = self.exploration_robots.iter_mut().find(|r| r.id == id) {
-                        robot.x = x;
-                        robot.y = y;
-                    }
+                                // Update exploration robot position
+                                if let Some(robot) = self.exploration_robots.iter_mut().find(|r| r.id == id) {
+                                    robot.x = x;
+                                    robot.y = y;
+                                }
                     
-                    self.total_explored += 1;
-                },
+                                self.total_explored += 1;
+                            },
                 RobotEvent::CollectionData { id, x, y, resource_type, amount } => {
-                    // Update collection robot position
-                    if let Some(robot) = self.collection_robots.iter_mut().find(|r| r.id == id) {
-                        robot.x = x;
-                        robot.y = y;
-                    }
+                                // Update collection robot position
+                                if let Some(robot) = self.collection_robots.iter_mut().find(|r| r.id == id) {
+                                    robot.x = x;
+                                    robot.y = y;
+                                }
                     
-                    // Add collected resources
-                    if let Some(resource_type) = resource_type {
-                        *self.collected_resources.entry(resource_type).or_insert(0) += amount;
-                    }
-                },
+                                // Add collected resources
+                                if let Some(resource_type) = resource_type {
+                                    *self.collected_resources.entry(resource_type).or_insert(0) += amount;
+                                }
+                            },
                 RobotEvent::ScienceData { id, x, y, resource_type, amount, modules } => {
-                    // Update scientific robot position
-                    if let Some(robot) = self.scientific_robots.iter_mut().find(|r| r.id == id) {
-                        robot.x = x;
-                        robot.y = y;
-                    }
+                                // Update scientific robot position
+                                if let Some(robot) = self.scientific_robots.iter_mut().find(|r| r.id == id) {
+                                    robot.x = x;
+                                    robot.y = y;
+                                }
                     
-                    // Add collected scientific data
-                    self.scientific_data += amount;
-                },
+                                // Add collected scientific data
+                                self.scientific_data += amount;
+                            },
                 RobotEvent::LowEnergy {id, remaining } => {
-                },
+                            },
                 RobotEvent::ReturnToBase {id  } => {
-                }
+                            }
+                RobotEvent::ArrivedAtStation { id, knowledge } => todo!(),
+                RobotEvent::MergeComplete { id, merged_knowledge } => todo!(),
+                RobotEvent::Shutdown { id, reason } => todo!(),
             }
         }
     }
