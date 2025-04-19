@@ -1,200 +1,423 @@
+use log::{debug, error, info, warn};
+use std::collections::HashSet;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, RwLock};
-use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
-use rand::Rng;
-
-use crate::communication::channels::{RobotEvent, ResourceType};
+use crate::communication::channels::{ResourceType, RobotEvent};
 use crate::map::noise::Map;
-use super::{RobotState, movement};
-use super::knowledge::RobotKnowledge;
+use crate::robot::movement::Direction;
+use crate::robot::state::RobotStatus;
 
+use super::knowledge::{self, RobotKnowledge, TileInfo};
+use super::{common, config, movement, RobotState};
+
+#[derive(Debug, Clone)]
 pub struct Module {
     pub name: String,
     pub science_bonus: u32,
-    pub energy_cost: u32,
+    pub energy_cost: u32, // Passive energy cost per move
 }
 
 pub struct ScientificRobot {
     state: RobotState,
     modules: Vec<Module>,
-    target_resource: Option<ResourceType>,
-    pub knowledge: RobotKnowledge,
+    knowledge: RobotKnowledge,
+    merge_complete_receiver: Receiver<RobotEvent>,
+    config: config::RobotTypeConfig,
 }
 
 impl ScientificRobot {
-    pub fn new(id: u32, start_x: usize, start_y: usize, map_width: usize, map_height: usize) -> Self {
+    pub fn new(
+        initial_state: RobotState,
+        map_width: usize,
+        map_height: usize,
+        merge_complete_receiver: Receiver<RobotEvent>,
+    ) -> Self {
         Self {
-            state: RobotState::new(id, start_x, start_y),
-            modules: Vec::new(),
-            target_resource: None,
             knowledge: RobotKnowledge::new(map_width, map_height),
+            state: initial_state,
+            modules: Vec::new(),
+            merge_complete_receiver,
+            config: config::SCIENTIFIC_CONFIG.clone(),
         }
     }
-    
+
     pub fn add_module(&mut self, name: &str, science_bonus: u32, energy_cost: u32) {
+        info!(
+            "Robot {}: Adding module '{}' (Bonus: {}, Cost: {})",
+            self.state.id, name, science_bonus, energy_cost
+        );
         self.modules.push(Module {
             name: name.to_string(),
             science_bonus,
             energy_cost,
         });
     }
-    
-    pub fn set_target_resource(&mut self, resource_type: ResourceType) {
-        // Scientists primarily target SciencePoints
-        if resource_type == ResourceType::SciencePoints {
-            self.target_resource = Some(resource_type);
-        }
-    }
-    
-    pub fn analyze_science_point(&self, base_value: u32) -> u32 {
-        let module_bonus: u32 = self.modules.iter()
-            .map(|module| module.science_bonus)
-            .sum();
-        
-        base_value + module_bonus
+
+    fn analyze_science_point(&self, base_value: u32) -> u32 {
+        let module_bonus: u32 = self.modules.iter().map(|module| module.science_bonus).sum();
+        base_value.saturating_add(module_bonus)
     }
 
-    fn update_knowledge(&mut self, map: &Map) {
-        self.knowledge.observe_and_update(self.state.x, self.state.y, map);
+    fn get_module_passive_energy_cost(&self) -> u32 {
+        self.modules.iter().map(|m| m.energy_cost).sum()
+    }
+
+    fn find_nearest_known_science_point(&self) -> Option<(usize, usize)> {
+        self.knowledge
+            .map
+            .iter()
+            .filter_map(|(&(x, y), tile_info)| {
+                if matches!(
+                    tile_info,
+                    TileInfo::Resource(ResourceType::SciencePoints, _)
+                ) {
+                    let dist_sq = (x as isize - self.state.x as isize).pow(2)
+                        + (y as isize - self.state.y as isize).pow(2);
+                    Some(((x, y), dist_sq))
+                } else {
+                    None
+                }
+            })
+            .min_by_key(|&(_, dist_sq)| dist_sq)
+            .map(|(coords, _)| coords)
     }
 
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
+        let robot_id = self.state.id;
+        let station_coords = self.knowledge.get_station_coords();
+        let config = self.config.clone();
+        let analysis_action_cost = config
+            .action_energy_cost
+            .expect("Scientific config must have an  action cost");
+
         thread::spawn(move || {
-            let mut rng = rand::rng();
-            
+            let mut visited_in_cycle: HashSet<(usize, usize)> = HashSet::new();
+            info!("Robot {}: Starting scientific analysis thread.", robot_id);
+
             loop {
-                // Check energy levels
-                if self.state.energy < 20 {
-                    let event = RobotEvent::LowEnergy {
-                        id: self.state.id,
-                        remaining: self.state.energy,
-                    };
-                    if sender.send(event).is_err() {
-                        break;
-                    }
-                    
-                    // Return to base if low on energy
-                    let event = RobotEvent::ReturnToBase {
-                        id: self.state.id,
-                    };
-                    if sender.send(event).is_err() {
-                        break;
-                    }
-                    
-                    // Simulate returning to base
-                    thread::sleep(Duration::from_secs(3));
-                    self.state.energy = 100;
-                    self.state.collected_resources.clear();
-                    continue;
-                }
-                
-                // Move towards science points or explore randomly
-                let direction = if let Some(target) = self.find_nearest_science_point(&map) {
-                    self.move_towards_target(target, &map)
-                } else {
-                    movement::Direction::random()
-                };
-                
-                let resource_info = {
-                    let map_read = map.read().unwrap();
-                    let (new_x, new_y) = movement::next_position(
-                        self.state.x, 
-                        self.state.y, 
-                        &direction, 
-                        &map_read
-                    );
-                    
-                    if !movement::is_valid_move(new_x, new_y, &map_read) {
-                        drop(map_read);
-                        continue;
-                    }
-                    
-                    self.state.x = new_x;
-                    self.state.y = new_y;
+                let passive_module_cost = self.get_module_passive_energy_cost();
 
-                    // Update robot knowledge after moving
-                    self.update_knowledge(&map_read);
+                match self.state.status {
+                    RobotStatus::Analyzing => {
+                        if self.state.energy <= config.low_energy_threshold {
+                            info!("R{}: Low E ({}), returning.", robot_id, self.state.energy);
+                            self.state.status = RobotStatus::ReturningToStation;
+                            visited_in_cycle.clear();
+                            continue;
+                        }
 
-                    // Scientists use more energy due to complex equipment
-                    let module_energy_cost: u32 = self.modules.iter()
-                        .map(|module| module.energy_cost)
-                        .sum();
-                    self.state.use_energy(1 + module_energy_cost);
-                    
-                    let resource_info = map_read.get_resource(new_x, new_y);
-                    drop(map_read);
-                    resource_info
-                };
-                
-                // Handle resource collection (specifically science points)
-                if let Some((resource_type, amount)) = resource_info {
-                    if resource_type == ResourceType::SciencePoints {
-                        // Scientists collect data but don't remove science points
-                        let science_value = self.analyze_science_point(amount);
-                        
-                        if self.state.collect_resource(resource_type.clone(), science_value) {
-                            // No need to remove science points as they're non-consumable
-                            
-                            // Send science data
-                            let event = RobotEvent::ScienceData {
-                                id: self.state.id,
-                                x: self.state.x,
-                                y: self.state.y,
-                                resource_type: resource_type,
-                                amount: science_value,
-                                modules: self.modules.iter().map(|m| m.name.clone()).collect(),
-                            };
-                            if sender.send(event).is_err() {
+                        let map_read_guard = match map.read() {
+                            Ok(g) => g,
+                            Err(p) => {
+                                error!("R{}: Map read poisoned! {}", robot_id, p);
                                 break;
                             }
+                        };
+                        let map_read = &*map_read_guard;
+
+                        {
+                            let x = self.state.x;
+                            let y = self.state.y;
+                            let knowledge: &mut RobotKnowledge = &mut self.knowledge;
+                            knowledge.observe_and_update(x, y, map_read);
+
+                            for dir in Direction::all().iter() {
+                                let (nx, ny) = movement::next_position(x, y, dir, map_read);
+
+                                if (nx, ny) != (x, y) {
+                                    knowledge.observe_and_update(nx, ny, map_read);
+                                }
+                            }
+                        };
+
+                        let mut analyzed_this_turn = false;
+                        let current_x = self.state.x;
+                        let current_y = self.state.y;
+
+                        if let TileInfo::Resource(ResourceType::SciencePoints, base_amount) =
+                            self.knowledge.get_tile(current_x, current_y)
+                        {
+                            if *base_amount > 0 {
+                                let analysis_total_cost =
+                                    analysis_action_cost.saturating_add(passive_module_cost);
+                                if self.state.use_energy(analysis_total_cost) {
+                                    let science_value = self.analyze_science_point(*base_amount);
+                                    info!(
+                                        "R{}: Analyzed science point at {:?}, value: {}",
+                                        robot_id,
+                                        (current_x, current_y),
+                                        science_value
+                                    );
+                                    analyzed_this_turn = true;
+
+                                    if !self.state.collect_resource(
+                                        ResourceType::SciencePoints,
+                                        science_value,
+                                    ) {
+                                        warn!("R{}: Failed to record science value (internal capacity?), value: {}", robot_id, science_value);
+                                    }
+
+                                    let event = RobotEvent::ScienceData {
+                                        id: robot_id,
+                                        x: current_x,
+                                        y: current_y,
+                                        resource_type: ResourceType::SciencePoints,
+                                        amount: science_value,
+                                        modules: self
+                                            .modules
+                                            .iter()
+                                            .map(|m| m.name.clone())
+                                            .collect(),
+                                    };
+                                    if let Err(e) = sender.send(event) {
+                                        error!("R{}: Failed send ScienceData: {}.", robot_id, e);
+                                        drop(map_read_guard);
+                                        break;
+                                    }
+                                } else {
+                                    warn!(
+                                        "R{}: Not enough energy ({}) for analysis @ {:?}",
+                                        robot_id,
+                                        self.state.energy,
+                                        (current_x, current_y)
+                                    );
+                                }
+                            }
                         }
+
+                        if !analyzed_this_turn {
+                            let move_total_cost = config
+                                .movement_energy_cost
+                                .saturating_add(passive_module_cost);
+                            if !self.state.use_energy(move_total_cost) {
+                                warn!(
+                                    "R{}: Not enough energy ({}) to move. Returning.",
+                                    robot_id, self.state.energy
+                                );
+                                self.state.status = RobotStatus::ReturningToStation;
+                                visited_in_cycle.clear();
+                                drop(map_read_guard);
+                                continue;
+                            }
+
+                            let direction = if let Some(target_coords) =
+                                self.find_nearest_known_science_point()
+                            {
+                                debug!(
+                                    "R{}: Moving towards known Science Point @ {:?}",
+                                    robot_id, target_coords
+                                );
+                                common::move_towards_target(
+                                    self.state.x,
+                                    self.state.y,
+                                    target_coords.0,
+                                    target_coords.1,
+                                    &self.knowledge,
+                                    map_read,
+                                )
+                            } else {
+                                debug!("R{}: No known Science Points. Exploring.", robot_id);
+                                movement::smart_direction(
+                                    self.state.x,
+                                    self.state.y,
+                                    &self.knowledge,
+                                    &visited_in_cycle,
+                                    map_read,
+                                )
+                                .unwrap_or_else(movement::Direction::random)
+                            };
+
+                            let (new_x, new_y) = movement::next_position(
+                                self.state.x,
+                                self.state.y,
+                                &direction,
+                                map_read,
+                            );
+
+                            if movement::is_valid_move(new_x, new_y, map_read) {
+                                if !matches!(
+                                    self.knowledge.get_tile(new_x, new_y),
+                                    knowledge::TileInfo::Obstacle
+                                ) {
+                                    self.state.x = new_x;
+                                    self.state.y = new_y;
+                                    visited_in_cycle.insert((new_x, new_y));
+                                } else {
+                                    debug!(
+                                        "R{}: Move {:?} blocked by known obstacle.",
+                                        robot_id,
+                                        (new_x, new_y)
+                                    );
+                                }
+                            }
+                        }
+
+                        drop(map_read_guard);
+
+                        thread::sleep(config::random_sleep_duration(
+                            config.primary_action_sleep_min_ms,
+                            config.primary_action_sleep_max_ms,
+                        ));
+                    }
+
+                    RobotStatus::ReturningToStation => {
+                        let (station_x, station_y) = station_coords;
+                        if self.state.x == station_x && self.state.y == station_y {
+                            info!("R{}: Arrived atr station", robot_id);
+                            self.state.status = RobotStatus::AtStation;
+                            let k_clone = self.knowledge.clone();
+                            let ev = RobotEvent::ArrivedAtStation {
+                                id: robot_id,
+                                knowledge: k_clone,
+                            };
+                            if let Err(e) = sender.send(ev) {
+                                error!("R{}: Failed send Arrived: {}", robot_id, e);
+                                break;
+                            };
+                            info!("R{}: Waiting MergeComplete...", robot_id);
+
+                            match self
+                                .merge_complete_receiver
+                                .recv_timeout(config::MERGE_TIMEOUT)
+                            {
+                                Ok(RobotEvent::MergeComplete {
+                                    merged_knowledge, ..
+                                }) => {
+                                    info!("R{}: MergeComplete OK.", robot_id);
+                                    self.knowledge = merged_knowledge;
+                                    self.state.energy = config::RECHARGE_ENERGY;
+                                    self.state
+                                        .collected_resources
+                                        .remove(&ResourceType::SciencePoints);
+                                    self.state.status = RobotStatus::Analyzing;
+                                    info!("R{}: Resuming analysis.", robot_id);
+                                }
+                                Ok(o) => {
+                                    warn!("R{}: Unexpected event: {:?}", robot_id, o);
+                                    self.state.status = RobotStatus::Analyzing;
+                                }
+                                Err(RecvTimeoutError::Timeout) => {
+                                    warn!("R{}: Merge Timeout.", robot_id);
+                                    self.state.status = RobotStatus::Analyzing;
+                                }
+                                Err(RecvTimeoutError::Disconnected) => {
+                                    error!("R{}: Merge channel disconnected.", robot_id);
+                                    break;
+                                }
+                            }
+                            continue;
+                        }
+
+                        // Move to station..
+                        let move_total_cost = config
+                            .movement_energy_cost
+                            .saturating_add(passive_module_cost);
+                        if !self.state.use_energy(move_total_cost) {
+                            warn!(
+                                "R{}: Not enough energy ({}) to return to station! Waiting.",
+                                robot_id, self.state.energy
+                            );
+                            thread::sleep(Duration::from_secs(3));
+                            continue;
+                        }
+
+                        let map_read_guard = match map.read() {
+                            Ok(g) => g,
+                            Err(p) => {
+                                error!("R{}: Map read poisoned! {}", robot_id, p);
+                                break;
+                            }
+                        };
+                        let map_read = &*map_read_guard;
+                        let direction = common::move_towards_target(
+                            self.state.x,
+                            self.state.y,
+                            station_x,
+                            station_y,
+                            &self.knowledge,
+                            map_read,
+                        );
+                        let (new_x, new_y) = movement::next_position(
+                            self.state.x,
+                            self.state.y,
+                            &direction,
+                            map_read,
+                        );
+
+                        let mut moved = false;
+                        if movement::is_valid_move(new_x, new_y, map_read) {
+                            if !matches!(
+                                self.knowledge.get_tile(new_x, new_y),
+                                knowledge::TileInfo::Obstacle
+                            ) {
+                                self.state.x = new_x;
+                                self.state.y = new_y;
+                                moved = true;
+                            }
+                        }
+                        if !moved {
+                            for _ in 0..4 {
+                                let rd = movement::Direction::random();
+                                let (rx, ry) = movement::next_position(
+                                    self.state.x,
+                                    self.state.y,
+                                    &rd,
+                                    map_read,
+                                );
+                                if movement::is_valid_move(rx, ry, map_read)
+                                    && !matches!(
+                                        self.knowledge.get_tile(rx, ry),
+                                        knowledge::TileInfo::Obstacle
+                                    )
+                                {
+                                    self.state.x = rx;
+                                    self.state.y = ry;
+                                    moved = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !moved {
+                            debug!(
+                                "R{}: Path to station blocked @ {:?}.",
+                                robot_id,
+                                (self.state.x, self.state.y)
+                            );
+                        }
+                        drop(map_read_guard);
+
+                        thread::sleep(config::random_sleep_duration(
+                            config::RETURN_SLEEP_MIN_MS,
+                            config::RETURN_SLEEP_MAX_MS,
+                        ));
+                    }
+                    RobotStatus::AtStation => {
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                    _ => {
+                        error!(
+                            "R{}: In unhandld statde {:?}. Defaulting to Analyzing.",
+                            robot_id, self.state.status
+                        );
+                        self.state.status = RobotStatus::Analyzing;
+                        thread::sleep(config::UNHANDLED_STATE_SLEEP);
                     }
                 }
-                
-                // Sleep to simulate processing time
-                thread::sleep(Duration::from_millis(rng.random_range(1000..3000))); // Scientists work slower
+            }
+
+            info!("Robot {}: Thread shutting down", robot_id);
+            if sender
+                .send(RobotEvent::Shutdown {
+                    id: robot_id,
+                    reason: "Thread loop exited".to_string(),
+                })
+                .is_err()
+            {
+                error!("Robot {}: Failed send final shutdown", robot_id);
             }
         });
-    }
-    
-    fn find_nearest_science_point(&self, map: &Arc<RwLock<Map>>) -> Option<(usize, usize)> {
-        let map_read = map.read().unwrap();
-        let resources = map_read.get_all_resources();
-        
-        // Find science points
-        let mut science_points = Vec::new();
-        for ((x, y), resource) in resources {
-            if resource.resource_type == crate::map::resources::ResourceType::SciencePoints {
-                science_points.push((*x, *y));
-            }
-        }
-        
-        if science_points.is_empty() {
-            return None;
-        }
-        
-        // Find nearest one
-        science_points.into_iter().min_by_key(|(x, y)| {
-            let dx = *x as isize - self.state.x as isize;
-            let dy = *y as isize - self.state.y as isize;
-            (dx * dx + dy * dy) as usize // Square distance
-        })
-    }
-    
-    fn move_towards_target(&self, target: (usize, usize), map: &Arc<RwLock<Map>>) -> movement::Direction {
-        let (target_x, target_y) = target;
-        
-        // Determine best direction to move towards target
-        if self.state.x < target_x {
-            movement::Direction::Right
-        } else if self.state.x > target_x {
-            movement::Direction::Left
-        } else if self.state.y < target_y {
-            movement::Direction::Down
-        } else {
-            movement::Direction::Up
-        }
     }
 }
