@@ -26,7 +26,7 @@ impl Map {
     pub fn new(width: usize, height: usize, seed: u32) -> Self {
         let perlin = Perlin::new(seed);
 
-        let data= (0..height)
+        let data = (0..height)
             .map(|y| {
                 (0..width)
                     .map(|x| perlin.get([x as f64 / 10.0, y as f64 / 10.0]) > 0.0)
@@ -65,17 +65,26 @@ impl Map {
     /// Spawns resources at random walkable positions
     pub fn spawn_resources(&mut self, count: usize, seed: u64) {
         let mut rng = StdRng::seed_from_u64(seed);
-        let walkable_positions: Vec<_> = self.data.iter().enumerate()
+        let walkable_positions: Vec<_> = self
+            .data
+            .iter()
+            .enumerate()
             .flat_map(|(y, row)| {
-                row.iter().enumerate()
+                row.iter()
+                    .enumerate()
                     .filter_map(move |(x, &cell)| if !cell { Some((x, y)) } else { None })
             })
             .collect();
-        let resource_types = [ResourceType::Energy, ResourceType::Minerals, ResourceType::SciencePoints];
+        let resource_types = [
+            ResourceType::Energy,
+            ResourceType::Minerals,
+            ResourceType::SciencePoints,
+        ];
         for &(x, y) in walkable_positions.choose_multiple(&mut rng, count) {
             let resource_type = resource_types.choose(&mut rng).unwrap().clone();
             let amount = rng.random_range(10..100);
-            self.resource_manager.add_resource(x, y, resource_type, amount);
+            self.resource_manager
+                .add_resource(x, y, resource_type, amount);
         }
     }
 
@@ -162,7 +171,6 @@ impl Map {
         })
     }
 
-
     /// Creates a path between two points in the map.
     ///
     /// The path is carved in a simple "L" shape, moving horizontally first, then vertically.
@@ -182,17 +190,22 @@ impl Map {
         }
     }
 
-    pub fn get_resource(&self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
+    pub fn get_resource(
+        &self,
+        x: usize,
+        y: usize,
+    ) -> Option<(crate::communication::channels::ResourceType, u32)> {
         self.resource_manager.get_resource(x, y).map(|ressource| {
             let channel_resource_type = match ressource.resource_type {
                 ResourceType::Energy => crate::communication::channels::ResourceType::Energy,
                 ResourceType::Minerals => crate::communication::channels::ResourceType::Minerals,
-                ResourceType::SciencePoints => crate::communication::channels::ResourceType::SciencePoints,
+                ResourceType::SciencePoints => {
+                    crate::communication::channels::ResourceType::SciencePoints
+                }
             };
             (channel_resource_type, ressource.amount)
         })
     }
-
 
     /// Removes a resource at the given coordinates if it's consumable (Energy, Minerals)
     /// For SciencePoints (non-consumable), just returns the resource info without removing it
@@ -202,7 +215,11 @@ impl Map {
     ///
     /// # Returns
     /// Some((resource_type, amount)) if a resource was found, None if no resource existed
-    pub fn remove_resource(&mut self, x: usize, y: usize) -> Option<(crate::communication::channels::ResourceType, u32)> {
+    pub fn remove_resource(
+        &mut self,
+        x: usize,
+        y: usize,
+    ) -> Option<(crate::communication::channels::ResourceType, u32)> {
         let (r_type, amount) = {
             let resource = self.resource_manager.get_resource(x, y)?;
             (resource.resource_type.clone(), resource.amount)
@@ -212,7 +229,9 @@ impl Map {
         let channel_resource_type = match r_type {
             ResourceType::Energy => crate::communication::channels::ResourceType::Energy,
             ResourceType::Minerals => crate::communication::channels::ResourceType::Minerals,
-            ResourceType::SciencePoints => crate::communication::channels::ResourceType::SciencePoints,
+            ResourceType::SciencePoints => {
+                crate::communication::channels::ResourceType::SciencePoints
+            }
         };
 
         if is_consumable {
@@ -221,7 +240,7 @@ impl Map {
 
         Some((channel_resource_type, amount))
     }
-    
+
     pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {
         self.resource_manager.get_all_resources()
     }
@@ -242,12 +261,11 @@ impl Map {
     }
 }
 
-
 // Formats the `Map` as a grid of characters (`#` for obstacles, `.` for walkable tiles)
 impl fmt::Display for Map {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let resources = self.resource_manager.get_all_resources();
-        
+
         for y in 0..self.height {
             for x in 0..self.width {
                 let symbol = if self.is_station(x, y) {
@@ -256,12 +274,12 @@ impl fmt::Display for Map {
                     '█'
                 } else if let Some(resource) = resources.get(&(x, y)) {
                     match resource.resource_type {
-                        ResourceType::Energy => 'E', // ⚡
-                        ResourceType::Minerals => 'M', // ⛏
+                        ResourceType::Energy => 'E',        // ⚡
+                        ResourceType::Minerals => 'M',      // ⛏
                         ResourceType::SciencePoints => 'S', // 🧪
                     }
                 } else {
-                    '.'
+                    ' '
                 };
                 write!(f, "{symbol}")?;
             }

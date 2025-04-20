@@ -1,5 +1,13 @@
-use std::sync::mpsc::{channel, Receiver, Sender};
 use crate::robot::knowledge::RobotKnowledge;
+use std::sync::mpsc::{channel, Receiver, Sender};
+
+/// Types of resources robots can collect
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ResourceType {
+    Energy,
+    Minerals,
+    SciencePoints,
+}
 
 #[derive(Debug, Clone)]
 pub enum RobotEvent {
@@ -43,14 +51,6 @@ pub enum RobotEvent {
         id: u32,
         reason: String,
     },
-}
-
-/// Types of resources robots can collect
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ResourceType {
-    Energy,
-    Minerals,
-    SciencePoints,
 }
 
 /// Creates a new communication channel for robot-station communication

@@ -1,138 +1,206 @@
 use ratatui::{
-    layout::{Rect, Layout, Direction, Constraint},
-    style::{Color, Style},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, List, ListItem},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
+use std::collections::HashMap;
 
-use crate::map::noise::Map;
-use crate::app::App;
+use crate::{
+    app::App,
+    communication::channels::ResourceType,
+    map::noise::Map,
+    robot::RobotState,
+};
 
 pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
-    // Split the screen into main map and sidebar
-    let chunks = Layout::default()
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let horizontal_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(75),
             Constraint::Percentage(25),
         ])
-        .split(area);
-    
-    // Render the map in the main area
-    render_map_with_robots(frame, chunks[0], app);
-    
-    // Render the sidebar with stats
-    render_sidebar_statistics(frame, chunks[1], app);
+        .split(main_chunks[0]);
+
+    render_map_with_robots(frame, horizontal_chunks[0], app);
+    render_sidebar_statistics(frame, horizontal_chunks[1], app);
 }
 
-pub fn render_map_with_robots(frame: &mut Frame, area: Rect, app: &App) {
-    let map_guard = app.map.read().unwrap();
-    
-    // Create a mutable copy of the map display
-    let mut display_lines = create_styled_lines(&map_guard);
-    
-    // Add exploration robots (represented as 'X')
-    for robot in &app.exploration_robots {
-        if robot.y < display_lines.len() {
-            let line = &mut display_lines[robot.y];
-            let mut spans = line.spans.clone();
-            
-            if robot.x < spans.len() {
-                spans[robot.x] = Span::styled("X", Style::default().fg(Color::Red));
-                *line = Line::from(spans);
-            }
-        }
-    }
-    
-    // Add collection robots (represented as 'C')
-    for robot in &app.collection_robots {
-        if robot.y < display_lines.len() {
-            let line = &mut display_lines[robot.y];
-            let mut spans = line.spans.clone();
-            
-            if robot.x < spans.len() {
-                spans[robot.x] = Span::styled("C", Style::default().fg(Color::Magenta));
-                *line = Line::from(spans);
-            }
-        }
-    }
+/// Renders the map grid and overlays robot symbols based on their current state.
+fn render_map_with_robots(frame: &mut Frame, area: Rect, app: &App) {
+    let map_guard = app.map.read().expect("Map lock poisoned during render");
 
-    // Add scientific robots (represented as 'S')
-    for robot in &app.scientific_robots {
-        if robot.y < display_lines.len() {
-            let line = &mut display_lines[robot.y];
-            let mut spans = line.spans.clone();
-            
-            if robot.x < spans.len() {
-                spans[robot.x] = Span::styled("S", Style::default().fg(Color::Cyan));
-                *line = Line::from(spans);
+    let mut display_lines = create_styled_lines(&map_guard);
+    drop(map_guard);
+
+
+    overlay_robots(
+        &mut display_lines,
+        &app.scientific_robots,
+        'S',
+        Style::default().fg(Color::Gray),
+    );
+    overlay_robots(
+        &mut display_lines,
+        &app.collection_robots,
+        'C',
+        Style::default().fg(Color::White),
+    );
+    overlay_robots(
+        &mut display_lines,
+        &app.exploration_robots,
+        'X',
+        Style::default().fg(Color::Red),
+    );
+
+    let map_widget = create_map_widget(display_lines);
+    frame.render_widget(map_widget, area);
+}
+
+fn overlay_robots(
+    display_lines: &mut [Line<'_>],
+    robots: &HashMap<u32, RobotState>,
+    symbol: char,
+    style: Style,
+) {
+    for robot_state in robots.values() {
+        // Check Y
+        if let Some(line) = display_lines.get_mut(robot_state.y) {
+            // Check X
+            if robot_state.x < line.width() {
+                if robot_state.x < line.spans.len() {
+                    line.spans[robot_state.x] = Span::styled(symbol.to_string(), style);
+                } else {
+                    log::warn!(
+                        "Robot {} ({},{}) out of bounds for lne spans (len {})",
+                        robot_state.id,
+                        robot_state.x,
+                        robot_state.y,
+                        line.spans.len()
+                    );
+                }
+            } else {
+                log::trace!(
+                    "Robot {} ({},{}) out of bounds for lne width ({})",
+                    robot_state.id,
+                    robot_state.x,
+                    robot_state.y,
+                    line.width()
+                );
             }
+        } else {
+            log::warn!(
+                "Robot {} ({},{}) out of bounds for display lines (len {})",
+                robot_state.id,
+                robot_state.x,
+                robot_state.y,
+                display_lines.len()
+            );
         }
     }
-    
-    let paragraph = create_map_widget(display_lines);
-    frame.render_widget(paragraph, area);
 }
 
 fn render_sidebar_statistics(frame: &mut Frame, area: Rect, app: &App) {
-    // Create resource stats
     let mut items = Vec::new();
-    
-    items.push(ListItem::new("Resources Collected:"));
-    for (resource_type, amount) in &app.collected_resources {
-        let text = format!("  {}: {}", match resource_type {
-            crate::communication::channels::ResourceType::Energy => "Energy",
-            crate::communication::channels::ResourceType::Minerals => "Minerals",
-            crate::communication::channels::ResourceType::SciencePoints => "Science",
-        }, amount);
-        items.push(ListItem::new(text));
+
+    items.push(ListItem::new(Line::from("--- Totals ---").bold()));
+
+    items.push(ListItem::new("Collected Resources:"));
+
+    let mut sorted_resources: Vec<_> = app.collected_resources.iter().collect();
+    sorted_resources.sort_by_key(|(k, _)| format!("{:?}", k));
+
+    if sorted_resources.is_empty() {
+        items.push(ListItem::new(Line::from("  None yet").italic()));
+    } else {
+        for (resource_type, amount) in sorted_resources {
+            let resource_name = match resource_type {
+                ResourceType::Energy => "Energy",
+                ResourceType::Minerals => "Minerals",
+                ResourceType::SciencePoints => "Science Pts (Raw)",
+            };
+            items.push(ListItem::new(format!("  {}: {}", resource_name, amount)));
+        }
     }
-    
+
     items.push(ListItem::new(""));
-    items.push(ListItem::new(format!("Scientific Data: {}", app.scientific_data)));
+    items.push(ListItem::new(format!(
+        "Total Science Value: {}",
+        app.scientific_data
+    )));
+    items.push(ListItem::new(format!(
+        "Explored Tiles: {} / {}",
+        app.total_explored,
+        app.map_width * app.map_height
+    )));
     items.push(ListItem::new(""));
-    items.push(ListItem::new(format!("Areas Explored: {}", app.total_explored)));
-    items.push(ListItem::new(""));
-    items.push(ListItem::new(format!("Robots Active: {}", 
-        app.exploration_robots.len() + app.collection_robots.len())));
-    items.push(ListItem::new(format!("  Explorers: {}", app.exploration_robots.len())));
-    items.push(ListItem::new(format!("  Collectors: {}", app.collection_robots.len())));
-    items.push(ListItem::new(format!("  Scientists: {}", app.scientific_robots.len())));
-    
-    let stats_list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Statistics"));
-    
+
+    // --- Robots Section ---
+    items.push(ListItem::new(Line::from("--- Robots ---").bold()));
+    let exploration_count = app.exploration_robots.len();
+    let collection_count = app.collection_robots.len();
+    let scientific_count = app.scientific_robots.len();
+    let total_robots = exploration_count + collection_count + scientific_count;
+
+    items.push(ListItem::new(format!("Active: {}", total_robots)));
+
+    items.push(ListItem::new(Line::from(vec![
+        Span::raw("  Explorers : "),
+        Span::styled(
+            exploration_count.to_string(),
+            Style::default().fg(Color::Red).bold(),
+        ),
+    ])));
+    items.push(ListItem::new(Line::from(vec![
+        Span::raw("  Collectors: "),
+        Span::styled(
+            collection_count.to_string(),
+            Style::default().fg(Color::Magenta).bold(),
+        ),
+    ])));
+    items.push(ListItem::new(Line::from(vec![
+        Span::raw("  Scientists: "),
+        Span::styled(
+            scientific_count.to_string(),
+            Style::default().fg(Color::Cyan).bold(),
+        ),
+    ])));
+
+    let stats_list =
+        List::new(items).block(Block::default().borders(Borders::ALL).title(" Statistics "));
+
     frame.render_widget(stats_list, area);
 }
 
-pub fn render_map(frame: &mut Frame, area: Rect, map: &Map) {
-    let lines = create_styled_lines(map);
-    let paragraph = create_map_widget(lines);
-    frame.render_widget(paragraph, area);
-}
-
 fn create_styled_lines(map: &Map) -> Vec<Line<'static>> {
-    map.to_string()
-        .lines()
-        .map(|line| create_styled_line(line))
-        .collect()
+    map.to_string().lines().map(create_styled_line).collect()
 }
 
-fn create_styled_line(line: &str) -> Line<'static> {
-    let spans: Vec<Span> = line
+fn create_styled_line(line_str: &str) -> Line<'static> {
+    line_str
         .chars()
-        .map(|c| create_styled_span(c))
-        .collect();
-    Line::from(spans)
+        .map(create_styled_span)
+        .collect::<Vec<_>>()
+        .into()
 }
 
 fn create_styled_span(c: char) -> Span<'static> {
     let style = match c {
-        '#' => Style::default().fg(Color::Gray),
+        '█' => Style::default().fg(Color::Gray),
+        ' ' => Style::default().fg(Color::Rgb(50, 50, 50)),
         'E' => Style::default().fg(Color::Yellow),
         'M' => Style::default().fg(Color::Blue),
         'S' => Style::default().fg(Color::Green),
+        '⌂' => Style::default().fg(Color::Indexed(208)),
         _ => Style::default().fg(Color::White),
     };
     Span::styled(c.to_string(), style)

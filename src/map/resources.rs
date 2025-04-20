@@ -15,7 +15,10 @@ pub struct Resource {
 
 impl Resource {
     pub fn new(resource_type: ResourceType, amount: u32) -> Self {
-        Self { resource_type, amount }
+        Self {
+            resource_type,
+            amount,
+        }
     }
 }
 
@@ -47,6 +50,7 @@ impl ResourceManager {
     }
 
     pub fn add_resource(&mut self, x: usize, y: usize, resource_type: ResourceType, amount: u32) {
-        self.resources.insert((x, y), Resource::new(resource_type, amount));
+        self.resources
+            .insert((x, y), Resource::new(resource_type, amount));
     }
 }

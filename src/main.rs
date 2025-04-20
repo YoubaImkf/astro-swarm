@@ -4,10 +4,13 @@ use astro_swarm::ui::map_renderer::render_app;
 
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{prelude::Backend, Terminal};
-use std::{io, time::{Duration, Instant}};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 
 fn main() -> std::io::Result<()> {
-    let mut app = App::new(90, 15, 34, 12345);
+    let mut app = App::new(90, 15, 34, 45);
     let mut terminal_manager = TerminalManager::new()?;
 
     run_app(&mut app, terminal_manager.get_terminal())?;
@@ -27,7 +30,6 @@ fn run_app<B: Backend>(app: &mut App, terminal: &mut Terminal<B>) -> io::Result<
             last_update = now;
         }
 
-        // Render the app
         terminal.draw(|frame| {
             render_app(frame, frame.area(), &app);
         })?;
