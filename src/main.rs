@@ -1,7 +1,6 @@
-use astro_swarm::app::App;
-use astro_swarm::terminal::TerminalManager;
-use astro_swarm::ui::map_renderer::render_app;
+use astro_swarm::{app::App, logging, terminal::TerminalManager, ui::map_renderer::render_app};
 
+use color_eyre::Result; 
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{prelude::Backend, Terminal};
 use std::{
@@ -9,7 +8,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<()> {
+    color_eyre::install()?;
+    logging::setup_logging()?;
+
+    log::info!("Application starting...");
+
     let mut app = App::new(90, 15, 34, 45);
     let mut terminal_manager = TerminalManager::new()?;
 
@@ -18,7 +22,7 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn run_app<B: Backend>(app: &mut App, terminal: &mut Terminal<B>) -> io::Result<()> {
+fn run_app<B: Backend>(app: &mut App, terminal: &mut Terminal<B>) -> Result<()> {
     let mut last_update = Instant::now();
     let tick_rate = Duration::from_millis(100);
 

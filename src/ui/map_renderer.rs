@@ -8,10 +8,7 @@ use ratatui::{
 use std::collections::HashMap;
 
 use crate::{
-    app::App,
-    communication::channels::ResourceType,
-    map::noise::Map,
-    robot::RobotState,
+    app::App, communication::channels::ResourceType, logging, map::noise::Map, robot::RobotState
 };
 
 pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
@@ -19,9 +16,13 @@ pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0),
+            Constraint::Percentage(80), // map and sidebar
+            Constraint::Percentage(20), // logs
         ])
         .split(area);
+
+    let top_area = main_chunks[0];
+    let log_area = main_chunks[1];
 
     let horizontal_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -29,10 +30,14 @@ pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
             Constraint::Percentage(75),
             Constraint::Percentage(25),
         ])
-        .split(main_chunks[0]);
+        .split(top_area);
 
     render_map_with_robots(frame, horizontal_chunks[0], app);
     render_sidebar_statistics(frame, horizontal_chunks[1], app);
+
+    // Render the log widget
+    let log_widget = logging::create_log_widget();
+    frame.render_widget(log_widget, log_area);
 }
 
 /// Renders the map grid and overlays robot symbols based on their current state.
@@ -44,19 +49,19 @@ fn render_map_with_robots(frame: &mut Frame, area: Rect, app: &App) {
 
 
     overlay_robots(
-        &mut display_lines,
+        display_lines.as_mut_slice(),
         &app.scientific_robots,
         'S',
         Style::default().fg(Color::Gray),
     );
     overlay_robots(
-        &mut display_lines,
+        display_lines.as_mut_slice(),
         &app.collection_robots,
         'C',
         Style::default().fg(Color::White),
     );
     overlay_robots(
-        &mut display_lines,
+        display_lines.as_mut_slice(),
         &app.exploration_robots,
         'X',
         Style::default().fg(Color::Red),
