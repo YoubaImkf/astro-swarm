@@ -110,6 +110,7 @@ impl ExplorationRobot {
                                 self.state.y = new_y;
                                 visited_during_exploration.insert((new_x, new_y));
                                 self.state.use_energy(config.movement_energy_cost);
+
                                 true
                             } else {
                                 debug!("Robot: {} Move {:?} blocked.", robot_id, (new_x, new_y));
@@ -222,7 +223,7 @@ impl ExplorationRobot {
                             ) {
                                 self.state.x = new_x;
                                 self.state.y = new_y;
-                                self.state.use_energy(config.movement_energy_cost);
+                    
                                 moved = true;
                             }
                         }
@@ -243,7 +244,7 @@ impl ExplorationRobot {
                                 {
                                     self.state.x = rx;
                                     self.state.y = ry;
-                                    self.state.use_energy(config.movement_energy_cost);
+                                    
                                     moved = true;
                                     break;
                                 }
@@ -270,7 +271,7 @@ impl ExplorationRobot {
                     }
                     RobotStatus::AtStation => {
                         thread::sleep(Duration::from_millis(config::AT_STATION_SLEEP_MS));
-                    } // Use config
+                    }
                     _ => {
                         error!("Robot: {} Unhandle state {:?}.", robot_id, self.state.status);
                         self.state.status = RobotStatus::Exploring;

@@ -369,14 +369,14 @@ impl ScientificRobot {
         }
 
         let move_total_cost = config.movement_energy_cost.saturating_add(passive_module_cost);
-        if !self.state.use_energy(move_total_cost) {
-            warn!(
-                "Robot: {} Not enough energy ({}) to return to station! Waiting.",
-                self.state.id, self.state.energy
-            );
-            thread::sleep(Duration::from_secs(3));
-            return true;
-        }
+        // if !self.state.use_energy(move_total_cost) {
+        //     warn!(
+        //         "Robot: {} Not enough energy ({}) to return to station! Waiting.",
+        //         self.state.id, self.state.energy
+        //     );
+        //     thread::sleep(Duration::from_secs(3));
+        //     return true;
+        // }
 
         let map_read_guard = match map.read() {
             Ok(g) => g,

@@ -543,7 +543,13 @@ impl CollectionRobot {
         {
             self.state.x = new_x;
             self.state.y = new_y;
-            self.state.use_energy(config.movement_energy_cost);
+
+            // For the moment return to station cost 0, but i would like to find a way to
+            // let die robots if they dont have enough energy to comes back.
+            if self.state.status != RobotStatus::ReturningToStation {
+                self.state.use_energy(config.movement_energy_cost);
+            }
+            
             moved = true;
         }
 
@@ -559,7 +565,10 @@ impl CollectionRobot {
                 {
                     self.state.x = rx;
                     self.state.y = ry;
-                    self.state.use_energy(config.movement_energy_cost);
+                    
+                    if self.state.status != RobotStatus::ReturningToStation {
+                        self.state.use_energy(config.movement_energy_cost);
+                    }
                     moved = true;
                     break;
                 }
