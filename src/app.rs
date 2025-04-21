@@ -9,10 +9,11 @@ use rand::{rngs::StdRng, seq::IndexedRandom, Rng, SeedableRng};
 use crate::{
     communication::channels::{ResourceType, RobotEvent},
     map::noise::Map,
-    robot::{
-        collection::CollectionRobot, config, exploration::ExplorationRobot,
-        scientific::ScientificRobot, state::RobotStatus, RobotState,
-    },
+    robot::behavior::collection::CollectionRobot,
+    robot::behavior::exploration::ExplorationRobot,
+    robot::behavior::scientific::ScientificRobot,
+    robot::core::state::{RobotStatus, RobotState},
+    robot::utils::config,
     station::station::Station,
 };
 

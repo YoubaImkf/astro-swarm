@@ -5,12 +5,15 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use super::knowledge::{self, RobotKnowledge, TileInfo};
-use super::{common, config, movement, RobotState};
+use crate::robot::core::knowledge::{self, RobotKnowledge, TileInfo};
+use crate::robot::utils::common;
+use crate::robot::utils::config;
+use crate::robot::core::movement;
+use crate::robot::RobotState;
 use crate::communication::channels::RobotEvent;
 use crate::map::noise::Map;
-use crate::robot::movement::Direction;
-use crate::robot::state::RobotStatus;
+use crate::robot::core::movement::Direction;
+use crate::robot::core::state::RobotStatus;
 
 pub struct ExplorationRobot {
     state: RobotState,

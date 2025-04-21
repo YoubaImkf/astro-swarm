@@ -7,11 +7,13 @@ use std::time::Duration;
 
 use crate::communication::channels::{ResourceType, RobotEvent};
 use crate::map::noise::Map;
-use crate::robot::movement::Direction;
-use crate::robot::state::RobotStatus;
+use crate::robot::core::movement::Direction;
+use crate::robot::core::state::RobotStatus;
 
-use super::knowledge::{self, RobotKnowledge, TileInfo};
-use super::{common, config, movement, RobotState};
+use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
+use crate::robot::utils::{common, config};
+use crate::robot::core::movement;
+use crate::robot::RobotState;
 
 #[derive(Debug, Clone)]
 pub struct Module {

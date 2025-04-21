@@ -1,5 +1,5 @@
 use crate::communication::channels::ResourceType;
-use crate::robot::knowledge::{RobotKnowledge, TileInfo};
+use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
 use chrono::{DateTime, Utc};
 use log::{debug, trace, warn};
 use std::collections::hash_map::Entry;

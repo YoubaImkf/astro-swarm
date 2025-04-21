@@ -1,6 +1,6 @@
 use crate::map::noise::Map;
-use crate::robot::knowledge::{RobotKnowledge, TileInfo};
-use crate::robot::movement::{is_valid_move, next_position, Direction};
+use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
+use crate::robot::core::movement::{is_valid_move, next_position, Direction};
 use log::debug;
 
 pub fn move_towards_target(

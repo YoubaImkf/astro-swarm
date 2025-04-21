@@ -1,4 +1,4 @@
-use crate::robot::knowledge::RobotKnowledge;
+use crate::robot::core::knowledge::RobotKnowledge;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 /// Types of resources robots can collect
