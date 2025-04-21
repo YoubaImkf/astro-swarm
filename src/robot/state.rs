@@ -18,7 +18,7 @@ pub struct RobotState {
     pub y: usize,
     pub energy: u32,
     pub collected_resources: HashMap<ResourceType, u32>,
-    pub capacity: u32,
+    pub max_capacity: u32,
     pub status: RobotStatus,
 }
 
@@ -30,7 +30,7 @@ impl RobotState {
             y: start_y,
             energy: 100,
             collected_resources: HashMap::new(),
-            capacity: 50,
+            max_capacity: 50,
             status: initial_status,
         }
     }
@@ -48,7 +48,7 @@ impl RobotState {
     pub fn collect_resource(&mut self, resource_type: ResourceType, amount: u32) -> bool {
         let current_total: u32 = self.collected_resources.values().sum();
 
-        if current_total + amount <= self.capacity {
+        if current_total + amount <= self.max_capacity {
             *self.collected_resources.entry(resource_type).or_insert(0) += amount;
             true
         } else {
@@ -57,7 +57,8 @@ impl RobotState {
     }
 
     pub fn is_full(&self) -> bool {
-        self.collected_resources.values().sum::<u32>() >= self.capacity
+        let current_capacity = self.collected_resources.values().sum::<u32>();
+        current_capacity >= self.max_capacity
     }
 
     pub fn needs_recharge(&self) -> bool {

@@ -1,6 +1,7 @@
 use crate::map::noise::Map;
 use crate::robot::knowledge::{RobotKnowledge, TileInfo};
-use crate::robot::movement::{self, Direction};
+use crate::robot::movement::{is_valid_move, next_position, Direction};
+use log::debug;
 
 pub fn move_towards_target(
     current_x: usize,
@@ -10,58 +11,61 @@ pub fn move_towards_target(
     knowledge: &RobotKnowledge,
     map: &Map,
 ) -> Direction {
-    let dx = target_x as isize - current_x as isize;
-    let dy = target_y as isize - current_y as isize;
+    debug!(
+        "Moving from ({},{}) towards ({},{})",
+        current_x, current_y, target_x, target_y
+    );
 
-    // Generate potential primary directions based on largest distance
-    let primary_dirs = if dx.abs() > dy.abs() {
-        if dx > 0 {
-            vec![Direction::Right, Direction::Left]
-        } else {
-            vec![Direction::Left, Direction::Right]
-        }
+    let try_horizontal = if target_x > current_x {
+        Some(Direction::Right)
+    } else if target_x < current_x {
+        Some(Direction::Left)
     } else {
-        if dy > 0 {
-            vec![Direction::Down, Direction::Up]
-        } else {
-            vec![Direction::Up, Direction::Down]
-        }
+        None
     };
 
-    // Generate potential secondary directions
-    let secondary_dirs = if dx.abs() <= dy.abs() {
-        if dx > 0 {
-            vec![Direction::Right, Direction::Left]
-        } else {
-            vec![Direction::Left, Direction::Right]
-        }
+    let try_vertical = if target_y > current_y {
+        Some(Direction::Down)
+    } else if target_y < current_y {
+        Some(Direction::Up)
     } else {
-        if dy > 0 {
-            vec![Direction::Down, Direction::Up]
-        } else {
-            vec![Direction::Up, Direction::Down]
-        }
+        None
     };
 
-    // Check primary directions first for non-obstacle paths
-    for &dir in &primary_dirs {
-        let (nx, ny) = movement::next_position(current_x, current_y, &dir, map);
-        if (nx, ny) != (current_x, current_y)
-            && !matches!(knowledge.get_tile(nx, ny), TileInfo::Obstacle)
-        {
-            return dir;
+    let directions_to_try = vec![
+        try_horizontal,
+        try_vertical,
+        Some(Direction::Up),
+        Some(Direction::Down),
+        Some(Direction::Left),
+        Some(Direction::Right),
+    ];
+
+    for dir_opt in directions_to_try {
+        if let Some(dir) = dir_opt {
+            let (nx, ny) = next_position(current_x, current_y, &dir, map);
+            if (nx, ny) != (current_x, current_y) && // Ensure we actually move
+               is_valid_move(nx, ny, map) &&
+               !matches!(knowledge.get_tile(nx, ny), TileInfo::Obstacle)
+            {
+                debug!("Selected direction: {:?} -> new pos: ({},{})", dir, nx, ny);
+                return dir;
+            }
         }
     }
 
-    // Check secondary directions if primary are blocked by known obstacles
-    for &dir in &secondary_dirs {
-        let (nx, ny) = movement::next_position(current_x, current_y, &dir, map);
+    for _ in 0..8 {
+        let random_dir = Direction::random();
+        let (nx, ny) = next_position(current_x, current_y, &random_dir, map);
         if (nx, ny) != (current_x, current_y)
+            && is_valid_move(nx, ny, map)
             && !matches!(knowledge.get_tile(nx, ny), TileInfo::Obstacle)
         {
-            return dir;
+            debug!("Using random direction: {:?}", random_dir);
+            return random_dir;
         }
     }
 
-    primary_dirs[0]
+    debug!("No valid direction found, returning random");
+    Direction::random()
 }
