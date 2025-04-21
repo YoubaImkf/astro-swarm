@@ -234,7 +234,7 @@ impl CollectionRobot {
             self.choose_best_explore_direction(&*map.read().unwrap())
         };
 
-        self.try_move(direction, map, config);
+        self.try_move(direction, map, config, sender);
 
         thread::sleep(config::random_sleep_duration(
             config.primary_action_sleep_min_ms,
@@ -403,6 +403,7 @@ impl CollectionRobot {
         direction: Direction,
         map: &Arc<RwLock<Map>>,
         config: &config::RobotTypeConfig,
+        sender: &Sender<RobotEvent>, 
     ) {
         let map_read_guard = match map.read() {
             Ok(g) => g,
@@ -434,6 +435,15 @@ impl CollectionRobot {
                 self.state.x = new_x;
                 self.state.y = new_y;
                 self.state.use_energy(config.movement_energy_cost);
+
+                // Send position update to App/UI
+                let _ = sender.send(RobotEvent::CollectionData {
+                    id: self.state.id,
+                    x: self.state.x,
+                    y: self.state.y,
+                    resource_type: None,
+                    amount: 0,
+                });                
             } else {
                 warn!(
                     "Robot: {} Not enough energy to movEnergy: {}/{}",
@@ -483,7 +493,7 @@ impl CollectionRobot {
                 }) => {
                     info!("Robot: {} MergeComplete OK.", robot_id);
                     self.knowledge = merged_knowledge;
-                    self.state.energy = config::RECHARGE_ENERGY;
+                    self.state.energy = self.state.max_energy;
                     self.state.collected_resources.clear();
                     self.state.status = RobotStatus::Collecting;
                     info!("Robot: {} Resuming collection.", robot_id);
