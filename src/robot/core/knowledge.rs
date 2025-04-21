@@ -119,5 +119,4 @@ mod tests {
         let knowledge = RobotKnowledge::new(8, 6);
         assert_eq!(knowledge.get_station_coords(), (4, 3));
     }
-
 }

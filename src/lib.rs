@@ -1,8 +1,8 @@
 pub mod app;
+pub mod communication;
+pub mod logging;
+pub mod map;
 pub mod robot;
 pub mod station;
-pub mod map;
-pub mod communication;
-pub mod ui;
 pub mod terminal;
-pub mod logging;
+pub mod ui;

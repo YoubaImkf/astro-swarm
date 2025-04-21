@@ -11,8 +11,8 @@ use crate::robot::core::movement::Direction;
 use crate::robot::core::state::RobotStatus;
 
 use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
-use crate::robot::utils::{common, config};
 use crate::robot::core::movement;
+use crate::robot::utils::{common, config};
 use crate::robot::RobotState;
 
 #[derive(Debug, Clone)]
@@ -105,7 +105,10 @@ impl ScientificRobot {
                 match self.state.status {
                     RobotStatus::Analyzing => {
                         if self.state.energy <= config.low_energy_threshold {
-                            info!("Robot: {} Low energy ({}), returning.", robot_id, self.state.energy);
+                            info!(
+                                "Robot: {} Low energy ({}), returning.",
+                                robot_id, self.state.energy
+                            );
                             self.state.status = RobotStatus::ReturningToStation;
                             visited_in_cycle.clear();
                             continue;
@@ -222,9 +225,14 @@ impl ScientificRobot {
                     let science_value = self.analyze_science_point(*base_amount);
                     info!(
                         "Robot: {} Analyzed science point at {:?}, value: {}",
-                        self.state.id, (current_x, current_y), science_value
+                        self.state.id,
+                        (current_x, current_y),
+                        science_value
                     );
-                    if !self.state.collect_resource(ResourceType::SciencePoints, science_value) {
+                    if !self
+                        .state
+                        .collect_resource(ResourceType::SciencePoints, science_value)
+                    {
                         warn!(
                             "Robot: {} Failed to record science value (internal capacity?), value: {}",
                             self.state.id, science_value
@@ -246,7 +254,9 @@ impl ScientificRobot {
                 } else {
                     warn!(
                         "Robot: {} Not enough energy ({}) for analysis @ {:?}",
-                        self.state.id, self.state.energy, (current_x, current_y)
+                        self.state.id,
+                        self.state.energy,
+                        (current_x, current_y)
                     );
                 }
             }
@@ -262,7 +272,9 @@ impl ScientificRobot {
         passive_module_cost: u32,
         config: &config::RobotTypeConfig,
     ) -> bool {
-        let move_total_cost = config.movement_energy_cost.saturating_add(passive_module_cost);
+        let move_total_cost = config
+            .movement_energy_cost
+            .saturating_add(passive_module_cost);
         if !self.state.use_energy(move_total_cost) {
             warn!(
                 "Robot: {} Not enough energy ({}) to move. Returning.",
@@ -287,7 +299,10 @@ impl ScientificRobot {
                 map,
             )
         } else {
-            debug!("Robot: {} No known Science Points. Exploring.", self.state.id);
+            debug!(
+                "Robot: {} No known Science Points. Exploring.",
+                self.state.id
+            );
             movement::smart_direction(
                 self.state.x,
                 self.state.y,
@@ -318,7 +333,8 @@ impl ScientificRobot {
         } else {
             debug!(
                 "Robot: {} Move {:?} blocked or invalid.",
-                self.state.id, (new_x, new_y)
+                self.state.id,
+                (new_x, new_y)
             );
             false
         }
@@ -348,7 +364,9 @@ impl ScientificRobot {
                 .merge_complete_receiver
                 .recv_timeout(config::MERGE_TIMEOUT)
             {
-                Ok(RobotEvent::MergeComplete { merged_knowledge, .. }) => {
+                Ok(RobotEvent::MergeComplete {
+                    merged_knowledge, ..
+                }) => {
                     info!("Robot: {} MergeComplete OK.", self.state.id);
                     self.knowledge = merged_knowledge;
                     self.state.energy = self.state.max_energy;
@@ -399,7 +417,8 @@ impl ScientificRobot {
             &self.knowledge,
             map_read,
         );
-        let (new_x, new_y) = movement::next_position(self.state.x, self.state.y, &direction, map_read);
+        let (new_x, new_y) =
+            movement::next_position(self.state.x, self.state.y, &direction, map_read);
 
         let mut moved = false;
         if movement::is_valid_move(new_x, new_y, map_read)
