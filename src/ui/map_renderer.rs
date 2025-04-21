@@ -16,8 +16,8 @@ pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(80), // map and sidebar
-            Constraint::Percentage(20), // logs
+            Constraint::Percentage(75), // map and sidebar
+            Constraint::Percentage(25), // logs
         ])
         .split(area);
 
@@ -35,7 +35,6 @@ pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
     render_map_with_robots(frame, horizontal_chunks[0], app);
     render_sidebar_statistics(frame, horizontal_chunks[1], app);
 
-    // Render the log widget
     let log_widget = logging::create_log_widget();
     frame.render_widget(log_widget, log_area);
 }
