@@ -112,7 +112,7 @@ impl ExplorationRobot {
                                 self.state.use_energy(config.movement_energy_cost);
                                 true
                             } else {
-                                debug!("R{}: Move {:?} blocked.", robot_id, (new_x, new_y));
+                                debug!("Robot: {} Move {:?} blocked.", robot_id, (new_x, new_y));
                                 false
                             }
                         } else {
@@ -148,7 +148,7 @@ impl ExplorationRobot {
                     RobotStatus::ReturningToStation => {
                         let (station_x, station_y) = station_coords;
                         if self.state.x == station_x && self.state.y == station_y {
-                            info!("R{}: Arrived station.", robot_id);
+                            info!("Robot: {} Arrived station.", robot_id);
                             self.state.status = RobotStatus::AtStation;
                             let k_clone = self.knowledge.clone();
                             let ev = RobotEvent::ArrivedAtStation {
@@ -156,10 +156,10 @@ impl ExplorationRobot {
                                 knowledge: k_clone,
                             };
                             if let Err(e) = sender.send(ev) {
-                                error!("R{}: Failed send Arrived: {}", robot_id, e);
+                                error!("Robot: {} Failed send Arrived: {}", robot_id, e);
                                 break;
                             };
-                            info!("R{}: Waiting MergeComplete...", robot_id);
+                            info!("Robot: {} Waiting MergeComplete...", robot_id);
 
                             match self
                                 .merge_complete_receiver
@@ -168,23 +168,23 @@ impl ExplorationRobot {
                                 Ok(RobotEvent::MergeComplete {
                                     merged_knowledge, ..
                                 }) => {
-                                    info!("R{}: MergeComplete OK.", robot_id);
+                                    info!("Robot: {} MergeComplete OK.", robot_id);
                                     self.knowledge = merged_knowledge;
                                     self.state.energy = config::RECHARGE_ENERGY;
                                     self.state.status = RobotStatus::Exploring;
                                     visited_during_exploration.clear();
-                                    info!("R{}: Resuming exploration.", robot_id);
+                                    info!("Robot: {} Resuming exploration.", robot_id);
                                 }
                                 Ok(o) => {
-                                    warn!("R{}: Unexpected event: {:?}", robot_id, o);
+                                    warn!("Robot: {} Unexpected event: {:?}", robot_id, o);
                                     self.state.status = RobotStatus::Exploring;
                                 }
                                 Err(RecvTimeoutError::Timeout) => {
-                                    warn!("R{}: Merge Timeout.", robot_id);
+                                    warn!("Robot: {} Merge Timeout.", robot_id);
                                     self.state.status = RobotStatus::Exploring;
                                 }
                                 Err(RecvTimeoutError::Disconnected) => {
-                                    error!("R{}: Merge channel disconnected.", robot_id);
+                                    error!("Robot: {} Merge channel disconnected.", robot_id);
                                     break;
                                 }
                             }
@@ -195,7 +195,7 @@ impl ExplorationRobot {
                         let map_read_guard = match map.read() {
                             Ok(g) => g,
                             Err(p) => {
-                                error!("R{}: Map read poisoned! {}", robot_id, p);
+                                error!("Robot: {} Map read poisoned! {}", robot_id, p);
                                 break;
                             }
                         };
@@ -251,14 +251,14 @@ impl ExplorationRobot {
                         }
                         if !moved {
                             debug!(
-                                "R{}: Path to station blocked @ {:?}.",
+                                "Robot: {} Path to station blocked @ {:?}.",
                                 robot_id,
                                 (self.state.x, self.state.y)
                             );
                         }
                         drop(map_read_guard);
                         debug!(
-                            "R{}: Returning @ {:?}, E: {}",
+                            "Robot: {} Returning @ {:?}, Energy: {}",
                             robot_id,
                             (self.state.x, self.state.y),
                             self.state.energy
@@ -272,7 +272,7 @@ impl ExplorationRobot {
                         thread::sleep(Duration::from_millis(config::AT_STATION_SLEEP_MS));
                     } // Use config
                     _ => {
-                        error!("R{}: Unhandle state {:?}.", robot_id, self.state.status);
+                        error!("Robot: {} Unhandle state {:?}.", robot_id, self.state.status);
                         self.state.status = RobotStatus::Exploring;
                         thread::sleep(config::UNHANDLED_STATE_SLEEP);
                     }
@@ -286,7 +286,7 @@ impl ExplorationRobot {
                 })
                 .is_err()
             {
-                error!("R{}: Failed send final shutdown.", robot_id);
+                error!("Robot: {} Failed send final shutdown.", robot_id);
             }
         });
     }

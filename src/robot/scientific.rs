@@ -103,7 +103,7 @@ impl ScientificRobot {
                 match self.state.status {
                     RobotStatus::Analyzing => {
                         if self.state.energy <= config.low_energy_threshold {
-                            info!("R{}: Low E ({}), returning.", robot_id, self.state.energy);
+                            info!("Robot: {} Low E ({}), returning.", robot_id, self.state.energy);
                             self.state.status = RobotStatus::ReturningToStation;
                             visited_in_cycle.clear();
                             continue;
@@ -112,7 +112,7 @@ impl ScientificRobot {
                         let map_read_guard = match map.read() {
                             Ok(g) => g,
                             Err(p) => {
-                                error!("R{}: Map read poisoned! {}", robot_id, p);
+                                error!("Robot: {} Map read poisoned! {}", robot_id, p);
                                 break;
                             }
                         };
@@ -146,7 +146,7 @@ impl ScientificRobot {
                                 if self.state.use_energy(analysis_total_cost) {
                                     let science_value = self.analyze_science_point(*base_amount);
                                     info!(
-                                        "R{}: Analyzed science point at {:?}, value: {}",
+                                        "Robot: {} Analyzed science point at {:?}, valuEnergy: {}",
                                         robot_id,
                                         (current_x, current_y),
                                         science_value
@@ -157,7 +157,7 @@ impl ScientificRobot {
                                         ResourceType::SciencePoints,
                                         science_value,
                                     ) {
-                                        warn!("R{}: Failed to record science value (internal capacity?), value: {}", robot_id, science_value);
+                                        warn!("Robot: {} Failed to record science value (internal capacity?), valuEnergy: {}", robot_id, science_value);
                                     }
 
                                     let event = RobotEvent::ScienceData {
@@ -173,13 +173,13 @@ impl ScientificRobot {
                                             .collect(),
                                     };
                                     if let Err(e) = sender.send(event) {
-                                        error!("R{}: Failed send ScienceData: {}.", robot_id, e);
+                                        error!("Robot: {} Failed send ScienceData: {}.", robot_id, e);
                                         drop(map_read_guard);
                                         break;
                                     }
                                 } else {
                                     warn!(
-                                        "R{}: Not enough energy ({}) for analysis @ {:?}",
+                                        "Robot: {} Not enough energy ({}) for analysis @ {:?}",
                                         robot_id,
                                         self.state.energy,
                                         (current_x, current_y)
@@ -194,7 +194,7 @@ impl ScientificRobot {
                                 .saturating_add(passive_module_cost);
                             if !self.state.use_energy(move_total_cost) {
                                 warn!(
-                                    "R{}: Not enough energy ({}) to move. Returning.",
+                                    "Robot: {} Not enough energy ({}) to move. Returning.",
                                     robot_id, self.state.energy
                                 );
                                 self.state.status = RobotStatus::ReturningToStation;
@@ -207,7 +207,7 @@ impl ScientificRobot {
                                 self.find_nearest_known_science_point()
                             {
                                 debug!(
-                                    "R{}: Moving towards known Science Point @ {:?}",
+                                    "Robot: {} Moving towards known Science Point @ {:?}",
                                     robot_id, target_coords
                                 );
                                 common::move_towards_target(
@@ -219,7 +219,7 @@ impl ScientificRobot {
                                     map_read,
                                 )
                             } else {
-                                debug!("R{}: No known Science Points. Exploring.", robot_id);
+                                debug!("Robot: {} No known Science Points. Exploring.", robot_id);
                                 movement::smart_direction(
                                     self.state.x,
                                     self.state.y,
@@ -247,7 +247,7 @@ impl ScientificRobot {
                                     visited_in_cycle.insert((new_x, new_y));
                                 } else {
                                     debug!(
-                                        "R{}: Move {:?} blocked by known obstacle.",
+                                        "Robot: {} Move {:?} blocked by known obstacle.",
                                         robot_id,
                                         (new_x, new_y)
                                     );
@@ -266,7 +266,7 @@ impl ScientificRobot {
                     RobotStatus::ReturningToStation => {
                         let (station_x, station_y) = station_coords;
                         if self.state.x == station_x && self.state.y == station_y {
-                            info!("R{}: Arrived atr station", robot_id);
+                            info!("Robot: {} Arrived atr station", robot_id);
                             self.state.status = RobotStatus::AtStation;
                             let k_clone = self.knowledge.clone();
                             let ev = RobotEvent::ArrivedAtStation {
@@ -274,10 +274,10 @@ impl ScientificRobot {
                                 knowledge: k_clone,
                             };
                             if let Err(e) = sender.send(ev) {
-                                error!("R{}: Failed send Arrived: {}", robot_id, e);
+                                error!("Robot: {} Failed send Arrived: {}", robot_id, e);
                                 break;
                             };
-                            info!("R{}: Waiting MergeComplete...", robot_id);
+                            info!("Robot: {} Waiting MergeComplete...", robot_id);
 
                             match self
                                 .merge_complete_receiver
@@ -286,25 +286,25 @@ impl ScientificRobot {
                                 Ok(RobotEvent::MergeComplete {
                                     merged_knowledge, ..
                                 }) => {
-                                    info!("R{}: MergeComplete OK.", robot_id);
+                                    info!("Robot: {} MergeComplete OK.", robot_id);
                                     self.knowledge = merged_knowledge;
                                     self.state.energy = config::RECHARGE_ENERGY;
                                     self.state
                                         .collected_resources
                                         .remove(&ResourceType::SciencePoints);
                                     self.state.status = RobotStatus::Analyzing;
-                                    info!("R{}: Resuming analysis.", robot_id);
+                                    info!("Robot: {} Resuming analysis.", robot_id);
                                 }
                                 Ok(o) => {
-                                    warn!("R{}: Unexpected event: {:?}", robot_id, o);
+                                    warn!("Robot: {} Unexpected event: {:?}", robot_id, o);
                                     self.state.status = RobotStatus::Analyzing;
                                 }
                                 Err(RecvTimeoutError::Timeout) => {
-                                    warn!("R{}: Merge Timeout.", robot_id);
+                                    warn!("Robot: {} Merge Timeout.", robot_id);
                                     self.state.status = RobotStatus::Analyzing;
                                 }
                                 Err(RecvTimeoutError::Disconnected) => {
-                                    error!("R{}: Merge channel disconnected.", robot_id);
+                                    error!("Robot: {} Merge channel disconnected.", robot_id);
                                     break;
                                 }
                             }
@@ -317,7 +317,7 @@ impl ScientificRobot {
                             .saturating_add(passive_module_cost);
                         if !self.state.use_energy(move_total_cost) {
                             warn!(
-                                "R{}: Not enough energy ({}) to return to station! Waiting.",
+                                "Robot: {} Not enough energy ({}) to return to station! Waiting.",
                                 robot_id, self.state.energy
                             );
                             thread::sleep(Duration::from_secs(3));
@@ -327,7 +327,7 @@ impl ScientificRobot {
                         let map_read_guard = match map.read() {
                             Ok(g) => g,
                             Err(p) => {
-                                error!("R{}: Map read poisoned! {}", robot_id, p);
+                                error!("Robot: {} Map read poisoned! {}", robot_id, p);
                                 break;
                             }
                         };
@@ -382,7 +382,7 @@ impl ScientificRobot {
                         }
                         if !moved {
                             debug!(
-                                "R{}: Path to station blocked @ {:?}.",
+                                "Robot: {} Path to station blocked @ {:?}.",
                                 robot_id,
                                 (self.state.x, self.state.y)
                             );
@@ -399,7 +399,7 @@ impl ScientificRobot {
                     }
                     _ => {
                         error!(
-                            "R{}: In unhandld statde {:?}. Defaulting to Analyzing.",
+                            "Robot: {} In unhandld statde {:?}. Defaulting to Analyzing.",
                             robot_id, self.state.status
                         );
                         self.state.status = RobotStatus::Analyzing;
