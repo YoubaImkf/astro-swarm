@@ -246,6 +246,30 @@ impl Map {
         Some((channel_resource_type, amount))
     }
 
+    pub fn add_resource(
+        &mut self,
+        x: usize,
+        y: usize,
+        resource_type: crate::communication::channels::ResourceType,
+        amount: u32,
+    ) {
+        use super::resources::ResourceType as InternalResourceType;
+        let internal_type = match resource_type {
+            crate::communication::channels::ResourceType::Energy => InternalResourceType::Energy,
+            crate::communication::channels::ResourceType::Minerals => InternalResourceType::Minerals,
+            crate::communication::channels::ResourceType::SciencePoints => InternalResourceType::SciencePoints,
+        };
+        self.resource_manager.add_resource(x, y, internal_type, amount);
+    }
+
+    pub fn set_walkable(&mut self, x: usize, y: usize) {
+        if let Some(row) = self.data.get_mut(y) {
+            if let Some(cell) = row.get_mut(x) {
+                *cell = false;
+            }
+        }
+    }
+
     pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {
         self.resource_manager.get_all_resources()
     }
