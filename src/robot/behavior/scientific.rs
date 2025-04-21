@@ -160,8 +160,8 @@ impl ScientificRobot {
                             &sender,
                             &map,
                             station_coords,
-                            passive_module_cost,
-                            &config,
+                            // passive_module_cost,
+                            // &config,
                         ) {
                             continue;
                         }
@@ -329,8 +329,8 @@ impl ScientificRobot {
         sender: &Sender<RobotEvent>,
         map: &Arc<RwLock<Map>>,
         station_coords: (usize, usize),
-        passive_module_cost: u32,
-        config: &config::RobotTypeConfig,
+        // passive_module_cost: u32,
+        // config: &config::RobotTypeConfig,
     ) -> bool {
         let (station_x, station_y) = station_coords;
         if self.state.x == station_x && self.state.y == station_y {
@@ -373,7 +373,7 @@ impl ScientificRobot {
             return true;
         }
 
-        let move_total_cost = config.movement_energy_cost.saturating_add(passive_module_cost);
+        //let move_total_cost = config.movement_energy_cost.saturating_add(passive_module_cost);
         // if !self.state.use_energy(move_total_cost) {
         //     warn!(
         //         "Robot: {} Not enough energy ({}) to return to station! Waiting.",

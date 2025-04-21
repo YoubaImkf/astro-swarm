@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::robot::core::knowledge::{self, RobotKnowledge, TileInfo};
+use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
 use crate::robot::utils::common;
 use crate::robot::utils::config;
 use crate::robot::core::movement;
@@ -39,7 +39,6 @@ impl ExplorationRobot {
     pub fn start(mut self, sender: Sender<RobotEvent>, map: Arc<RwLock<Map>>) {
         let robot_id = self.state.id;
         let station_coords = self.knowledge.get_station_coords();
-        let config = self.config.clone();
 
         thread::spawn(move || {
             let mut visited: HashSet<(usize, usize)> = HashSet::new();
