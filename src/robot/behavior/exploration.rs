@@ -278,3 +278,67 @@ impl ExplorationRobot {
         }
     }
 }
+
+
+// NOT WORKING - FIX TODO
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::robot::core::state::{RobotState, RobotStatus};
+//     use crate::communication::channels::{RobotEvent, create_channel, ResourceType};
+//     use crate::map::noise::Map;
+//     use std::sync::{Arc, RwLock};
+//     use std::thread;
+//     use std::time::Duration;
+
+//     #[test]
+//     fn exploration_robot_finds_and_reports_resource_then_returns_to_station() {
+//         let width = 7;
+//         let height = 7;
+//         let (tx, rx) = create_channel();
+//         let mut map = Map::new(width, height, 42);
+//         map.set_walkable(0, 0);
+//         map.set_walkable(1, 0);
+//         map.add_resource(1, 0, ResourceType::Minerals, 100);
+//         let map = Arc::new(RwLock::new(map));
+        
+//         let robot_state = RobotState::new(1, 0, 0, RobotStatus::Exploring, 10);
+//         let (_merge_tx, merge_rx) = create_channel();
+//         let robot = ExplorationRobot::new(robot_state, width, height, merge_rx);
+
+//         let tx_clone = tx.clone();
+//         let map_clone = Arc::clone(&map);
+//         thread::spawn(move || {
+//             robot.start(tx_clone, map_clone);
+//         });
+
+//         let mut found_resource = false;
+//         let mut returned_to_station = false;
+
+//         let start = std::time::Instant::now();
+//         while start.elapsed() < Duration::from_secs(10) {
+//             if let Ok(event) = rx.recv_timeout(Duration::from_millis(200)) {
+//                 match event {
+//                     RobotEvent::ExplorationData { x, y, .. } if (x, y) == (1, 0) => {
+//                         found_resource = true;
+//                     }
+//                     RobotEvent::ArrivedAtStation { id, .. } if id == 1 => {
+//                         returned_to_station = true;
+//                         let _ = tx.send(RobotEvent::MergeComplete {
+//                             id,
+//                             merged_knowledge: RobotKnowledge::new(width, height),
+//                         });
+//                     }
+//                     RobotEvent::Shutdown { .. } => break,
+//                     _ => {}
+//                 }
+//             }
+//             if found_resource && returned_to_station {
+//                 break;
+//             }
+//         }
+
+//         assert!(found_resource, "Robot did not find the resource");
+//         assert!(returned_to_station, "Robot did not return to station");
+//     }
+// }
