@@ -81,7 +81,7 @@ impl CollectionRobot {
 
         if let Some(coords) = known_resource {
             debug!(
-                "R{}: Found known target resource at {:?}",
+                "Robot: {} Found known target resource at {:?}",
                 self.state.id, coords
             );
             return Some(coords);
@@ -107,13 +107,13 @@ impl CollectionRobot {
 
         if let Some(coords) = unknown_tile {
             debug!(
-                "R{}: No known target resource, found unknown tile at {:?}",
+                "Robot: {} No known target resource, found unknown tile at {:?}",
                 self.state.id, coords
             );
             Some(coords)
         } else {
             debug!(
-                "R{}: No known target resource or unknown tiles found.",
+                "Robot: {} No known target resource or unknown tiles found.",
                 self.state.id
             );
             None
@@ -130,9 +130,9 @@ impl CollectionRobot {
 
         thread::spawn(move || {
             debug!(
-                "R{}: Carrying {}/{} units", 
-                self.state.id, 
-                self.state.collected_resources.values().sum::<u32>(), 
+                "Robot: {} Carrying {}/{} units",
+                self.state.id,
+                self.state.collected_resources.values().sum::<u32>(),
                 self.state.max_capacity
             );
             info!(
@@ -152,7 +152,7 @@ impl CollectionRobot {
                         self.handle_at_station();
                     }
                     _ => {
-                        error!("R{}: Unhandled state {:?}.", robot_id, self.state.status);
+                        error!("Robot: {} Unhandled state {:?}.", robot_id, self.state.status);
                         self.state.status = RobotStatus::Collecting;
                         thread::sleep(config::UNHANDLED_STATE_SLEEP);
                     }
@@ -172,7 +172,7 @@ impl CollectionRobot {
 
         if self.state.energy <= config.low_energy_threshold || self.state.is_full() {
             info!(
-                "R{}: {}",
+                "Robot: {} {}",
                 robot_id,
                 if self.state.energy <= config.low_energy_threshold {
                     "Low energy, returning"
@@ -209,7 +209,7 @@ impl CollectionRobot {
 
         let direction = if let Some(target_coords) = self.find_nearest_target_resource() {
             debug!(
-                "R{}: Moving towards {:?} @ {:?} from {:?}",
+                "Robot: {} Moving towards {:?} @ {:?} from {:?}",
                 robot_id,
                 self.target_resource_type.as_ref().unwrap(),
                 target_coords,
@@ -227,7 +227,7 @@ impl CollectionRobot {
             )
         } else {
             debug!(
-                "R{}: No target {:?}. Enhanced exploring.",
+                "Robot: {} No target {:?}. Enhanced exploring.",
                 robot_id, self.target_resource_type
             );
             self.current_target_coords = None;
@@ -256,7 +256,7 @@ impl CollectionRobot {
             let guard = match map.read() {
                 Ok(g) => g,
                 Err(p) => {
-                    error!("R{}: Map read poisoned! {}", robot_id, p);
+                    error!("Robot: {} Map read poisoned! {}", robot_id, p);
                     return false;
                 }
             };
@@ -266,12 +266,13 @@ impl CollectionRobot {
         };
 
         if !resource_present {
+            debug!("Robot: {} No resource present at ({}, {})", robot_id, x, y);
             return false;
         }
 
         if !self.state.use_energy(collection_action_cost) {
             warn!(
-                "R{}: No energy ({}) to collect @ {:?}",
+                "Robot: {} No energy ({}) to collect @ {:?}",
                 robot_id,
                 self.state.energy,
                 (x, y)
@@ -285,38 +286,53 @@ impl CollectionRobot {
             let mut guard = match map.write() {
                 Ok(g) => g,
                 Err(p) => {
-                    error!("R{}: Map write poisoned! {}", robot_id, p);
+                    error!("Robot: {} Map write poisoned! {}", robot_id, p);
                     return false;
                 }
             };
             if let Some((res_type, amount)) = guard.get_resource(x, y) {
+                debug!(
+                    "Robot: {} Resource at ({}, {}): {:?} amount={}",
+                    robot_id, x, y, res_type, amount
+                );
+                let current_total = self.state.collected_resources.values().sum::<u32>();
+                let available_capacity = self.state.max_capacity.saturating_sub(current_total);
+                let to_collect = amount.min(available_capacity);
+
+                debug!(
+                    "Robot: {} Carrying {}/{} before collecting. Trying to collect {}.",
+                    robot_id, current_total, self.state.max_capacity, to_collect
+                );
+
                 if res_type == *target_type && amount > 0 {
                     if self.state.collect_resource(target_type.clone(), amount) {
                         amount_collected = amount;
                         if guard.remove_resource(x, y).is_some() {
                             remove_successful = true;
                             info!(
-                                "R{}: Collected/removed {} {:?} @ {:?}",
+                                "Robot: {} Collected/removed {} {:?} @ {:?}. Now carrying {}/{}.",
                                 robot_id,
                                 amount_collected,
                                 target_type,
-                                (x, y)
+                                (x, y),
+                                self.state.collected_resources.values().sum::<u32>(),
+                                self.state.max_capacity
                             );
                         } else {
-                            error!("R{}: Failed remove map @ {:?}", robot_id, (x, y));
+                            error!("Robot: {} Failed remove map @ {:?}", robot_id, (x, y));
                         }
                     } else {
-                        warn!("R{}: Collect failed (capacity?) @ {:?}", robot_id, (x, y));
+                        warn!("Robot: {} Collect failed (capacity?) @ {:?}", robot_id, (x, y));
                         if self.state.is_full() {
                             self.state.status = RobotStatus::ReturningToStation;
                             // self.current_target_coords = None;
                         }
                     }
                 } else {
-                    debug!("R{}: Resource changed pre-write @ {:?}", robot_id, (x, y));
+                    debug!("Robot: {} Resource changed pre-write @ {:?}", robot_id, (x, y));
                 }
             } else {
-                debug!("R{}: Resource gone pre-write @ {:?}", robot_id, (x, y));
+                debug!("Robot: {} Resource gone pre-write @ {:?}", robot_id, (x, y));
             }
         }
         if remove_successful {
@@ -329,7 +345,7 @@ impl CollectionRobot {
                 amount: amount_collected,
             };
             if let Err(e) = sender.send(event) {
-                error!("R{}: Failed send CollectionData: {}.", robot_id, e);
+                error!("Robot: {} Failed send CollectionData: {}.", robot_id, e);
             }
         }
         remove_successful
@@ -339,7 +355,7 @@ impl CollectionRobot {
         let map_read_guard = match map.read() {
             Ok(g) => g,
             Err(p) => {
-                error!("R{}: Map read poisoned! {}", self.state.id, p);
+                error!("Robot: {} Map read poisoned! {}", self.state.id, p);
                 return;
             }
         };
@@ -391,7 +407,7 @@ impl CollectionRobot {
         let map_read_guard = match map.read() {
             Ok(g) => g,
             Err(p) => {
-                error!("R{}: Map read poisoned! {}", self.state.id, p);
+                error!("Robot: {} Map read poisoned! {}", self.state.id, p);
                 return;
             }
         };
@@ -406,11 +422,12 @@ impl CollectionRobot {
             )
         {
             debug!(
-                "R{}: Moving from {:?} to {:?} (capacity: {})",
+                "Robot: {} Moving from {:?} to {:?} (capacity: {}, energy: {})",
                 self.state.id,
                 (self.state.x, self.state.y),
                 (new_x, new_y),
-                self.state.max_capacity
+                self.state.max_capacity,
+                self.state.energy
             );
 
             if self.state.energy >= config.movement_energy_cost {
@@ -419,7 +436,7 @@ impl CollectionRobot {
                 self.state.use_energy(config.movement_energy_cost);
             } else {
                 warn!(
-                    "R{}: Not enough energy to move: {}/{}",
+                    "Robot: {} Not enough energy to movEnergy: {}/{}",
                     self.state.id, self.state.energy, config.movement_energy_cost
                 );
                 self.state.status = RobotStatus::ReturningToStation;
@@ -427,7 +444,7 @@ impl CollectionRobot {
             }
         } else {
             debug!(
-                "R{}: Move to {:?} blocked or invalid.",
+                "Robot: {} Move to {:?} blocked or invalid.",
                 self.state.id,
                 (new_x, new_y)
             );
@@ -444,7 +461,7 @@ impl CollectionRobot {
         let robot_id = self.state.id;
         let (station_x, station_y) = station_coords;
         if self.state.x == station_x && self.state.y == station_y {
-            info!("R{}: Arrived station.", robot_id);
+            info!("Robot: {} Arrived station.", robot_id);
             self.state.status = RobotStatus::AtStation;
             let k_clone = self.knowledge.clone();
             let ev = RobotEvent::ArrivedAtStation {
@@ -452,10 +469,10 @@ impl CollectionRobot {
                 knowledge: k_clone,
             };
             if let Err(e) = sender.send(ev) {
-                error!("R{}: Failed send Arrived: {}", robot_id, e);
+                error!("Robot: {} Failed send Arrived: {}", robot_id, e);
                 return;
             }
-            info!("R{}: Waiting MergeComplete...", robot_id);
+            info!("Robot: {} Waiting MergeComplete...", robot_id);
 
             match self
                 .merge_complete_receiver
@@ -464,23 +481,23 @@ impl CollectionRobot {
                 Ok(RobotEvent::MergeComplete {
                     merged_knowledge, ..
                 }) => {
-                    info!("R{}: MergeComplete OK.", robot_id);
+                    info!("Robot: {} MergeComplete OK.", robot_id);
                     self.knowledge = merged_knowledge;
                     self.state.energy = config::RECHARGE_ENERGY;
                     self.state.collected_resources.clear();
                     self.state.status = RobotStatus::Collecting;
-                    info!("R{}: Resuming collection.", robot_id);
+                    info!("Robot: {} Resuming collection.", robot_id);
                 }
                 Ok(o) => {
-                    warn!("R{}: Unexpected event: {:?}", robot_id, o);
+                    warn!("Robot: {} Unexpected event: {:?}", robot_id, o);
                     self.state.status = RobotStatus::Collecting;
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    warn!("R{}: Merge Timeout.", robot_id);
+                    warn!("Robot: {} Merge Timeout.", robot_id);
                     self.state.status = RobotStatus::Collecting;
                 }
                 Err(RecvTimeoutError::Disconnected) => {
-                    error!("R{}: Merge channel disconnected.", robot_id);
+                    error!("Robot: {} Merge channel disconnected.", robot_id);
                 }
             }
             return;
@@ -489,7 +506,7 @@ impl CollectionRobot {
         let map_read_guard = match map.read() {
             Ok(g) => g,
             Err(p) => {
-                error!("R{}: Map read poisoned! {}", robot_id, p);
+                error!("Robot: {} Map read poisoned! {}", robot_id, p);
                 return;
             }
         };
@@ -540,7 +557,7 @@ impl CollectionRobot {
         }
         if !moved {
             debug!(
-                "R{}: Path to station blocked @ {:?}.",
+                "Robot: {} Path to station blocked @ {:?}.",
                 robot_id,
                 (self.state.x, self.state.y)
             );

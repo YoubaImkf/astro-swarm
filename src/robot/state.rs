@@ -30,7 +30,7 @@ impl RobotState {
             y: start_y,
             energy: 100,
             collected_resources: HashMap::new(),
-            max_capacity: 50,
+            max_capacity: 700,
             status: initial_status,
         }
     }
