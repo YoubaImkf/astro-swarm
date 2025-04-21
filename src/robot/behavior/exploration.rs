@@ -9,11 +9,10 @@ use crate::robot::core::knowledge::{self, RobotKnowledge, TileInfo};
 use crate::robot::utils::common;
 use crate::robot::utils::config;
 use crate::robot::core::movement;
-use crate::robot::RobotState;
+use crate::robot::core::movement::Direction;
+use crate::robot::core::state::{RobotState, RobotStatus};
 use crate::communication::channels::RobotEvent;
 use crate::map::noise::Map;
-use crate::robot::core::movement::Direction;
-use crate::robot::core::state::RobotStatus;
 
 pub struct ExplorationRobot {
     state: RobotState,
@@ -43,255 +42,240 @@ impl ExplorationRobot {
         let config = self.config.clone();
 
         thread::spawn(move || {
-            let mut visited_during_exploration: HashSet<(usize, usize)> = HashSet::new();
+            let mut visited: HashSet<(usize, usize)> = HashSet::new();
             info!("Robot {}: Starting exploration thread.", robot_id);
 
             loop {
                 match self.state.status {
                     RobotStatus::Exploring => {
-                        if self.state.energy <= config.low_energy_threshold {
-                            info!(
-                                "Robot {}: Low energy ({}), returning to station.",
-                                self.state.id, self.state.energy
-                            );
-                            self.state.status = RobotStatus::ReturningToStation;
-                            visited_during_exploration.clear();
+                        if self.low_energy() {
+                            self.transition_to_returning(&mut visited);
                             continue;
                         }
-
-                        let map_read_guard = match map.read() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                error!(
-                                    "Robot {}: Map lock poisoned! Shutting down. Err: {}",
-                                    self.state.id, poisoned
-                                );
-                                let _ = sender.send(RobotEvent::Shutdown {
-                                    id: self.state.id,
-                                    reason: "Map lock poisoned".to_string(),
-                                });
-                                break;
-                            }
-                        };
-                        let map_read = &*map_read_guard;
-
-                        {
-                            let x = self.state.x;
-                            let y = self.state.y;
-                            let knowledge: &mut RobotKnowledge = &mut self.knowledge;
-                            knowledge.observe_and_update(x, y, map_read);
-
-                            for dir in Direction::all().iter() {
-                                let (nx, ny) = movement::next_position(x, y, dir, map_read);
-
-                                if (nx, ny) != (x, y) {
-                                    knowledge.observe_and_update(nx, ny, map_read);
-                                }
-                            }
-                        };
-
-                        let direction = movement::smart_direction(
-                            self.state.x,
-                            self.state.y,
-                            &self.knowledge,
-                            &visited_during_exploration,
-                            map_read,
-                        )
-                        .unwrap_or_else(movement::Direction::random);
-
-                        let (new_x, new_y) = movement::next_position(
-                            self.state.x,
-                            self.state.y,
-                            &direction,
-                            map_read,
-                        );
-
-                        let moved = if movement::is_valid_move(new_x, new_y, map_read) {
-                            if !matches!(self.knowledge.get_tile(new_x, new_y), TileInfo::Obstacle)
-                            {
-                                self.state.x = new_x;
-                                self.state.y = new_y;
-                                visited_during_exploration.insert((new_x, new_y));
-                                self.state.use_energy(config.movement_energy_cost);
-
-                                true
-                            } else {
-                                debug!("Robot: {} Move {:?} blocked.", robot_id, (new_x, new_y));
-                                false
-                            }
-                        } else {
-                            false
-                        };
-
-                        let is_obstacle_at_new_pos =
-                            map_read.is_obstacle(self.state.x, self.state.y);
-                        drop(map_read_guard);
-
-                        if moved {
-                            let event = RobotEvent::ExplorationData {
-                                id: self.state.id,
-                                x: self.state.x,
-                                y: self.state.y,
-                                is_obstacle: is_obstacle_at_new_pos,
-                            };
-                            if let Err(e) = sender.send(event) {
-                                error!(
-                                    "Robot {}: Failed to send ExplorationData: {}. Shutting down.",
-                                    self.state.id, e
-                                );
-                                break;
-                            }
+                        if let Err(e) = self.explore_step(&sender, &map, &mut visited) {
+                            error!("Robot {}: {}", robot_id, e);
+                            break;
                         }
-
-                        thread::sleep(config::random_sleep_duration(
-                            config.primary_action_sleep_min_ms,
-                            config.primary_action_sleep_max_ms,
-                        ));
                     }
-
                     RobotStatus::ReturningToStation => {
-                        let (station_x, station_y) = station_coords;
-                        if self.state.x == station_x && self.state.y == station_y {
-                            info!("Robot: {} Arrived station.", robot_id);
-                            self.state.status = RobotStatus::AtStation;
-                            let k_clone = self.knowledge.clone();
-                            let ev = RobotEvent::ArrivedAtStation {
-                                id: robot_id,
-                                knowledge: k_clone,
-                            };
-                            if let Err(e) = sender.send(ev) {
-                                error!("Robot: {} Failed send Arrived: {}", robot_id, e);
-                                break;
-                            };
-                            info!("Robot: {} Waiting MergeComplete...", robot_id);
-
-                            match self
-                                .merge_complete_receiver
-                                .recv_timeout(config::MERGE_TIMEOUT)
-                            {
-                                Ok(RobotEvent::MergeComplete {
-                                    merged_knowledge, ..
-                                }) => {
-                                    info!("Robot: {} MergeComplete OK.", robot_id);
-                                    self.knowledge = merged_knowledge;
-                                    self.state.energy = self.state.max_energy;
-                                    self.state.status = RobotStatus::Exploring;
-                                    visited_during_exploration.clear();
-                                    info!("Robot: {} Resuming exploration.", robot_id);
-                                }
-                                Ok(o) => {
-                                    warn!("Robot: {} Unexpected event: {:?}", robot_id, o);
-                                    self.state.status = RobotStatus::Exploring;
-                                }
-                                Err(RecvTimeoutError::Timeout) => {
-                                    warn!("Robot: {} Merge Timeout.", robot_id);
-                                    self.state.status = RobotStatus::Exploring;
-                                }
-                                Err(RecvTimeoutError::Disconnected) => {
-                                    error!("Robot: {} Merge channel disconnected.", robot_id);
-                                    break;
-                                }
-                            }
-
+                        if self.handle_returning_to_station(&sender, &map, station_coords, &mut visited) {
                             continue;
                         }
-
-                        let map_read_guard = match map.read() {
-                            Ok(g) => g,
-                            Err(p) => {
-                                error!("Robot: {} Map read poisoned! {}", robot_id, p);
-                                break;
-                            }
-                        };
-                        let map_read = &*map_read_guard;
-                        let direction = common::move_towards_target(
-                            self.state.x,
-                            self.state.y,
-                            station_x,
-                            station_y,
-                            &self.knowledge,
-                            map_read,
-                        );
-                        let (new_x, new_y) = movement::next_position(
-                            self.state.x,
-                            self.state.y,
-                            &direction,
-                            map_read,
-                        );
-                        let mut moved = false;
-                        if movement::is_valid_move(new_x, new_y, map_read) {
-                            if !matches!(
-                                self.knowledge.get_tile(new_x, new_y),
-                                knowledge::TileInfo::Obstacle
-                            ) {
-                                self.state.x = new_x;
-                                self.state.y = new_y;
-                    
-                                moved = true;
-                            }
-                        }
-                        if !moved {
-                            for _ in 0..4 {
-                                let rd = movement::Direction::random();
-                                let (rx, ry) = movement::next_position(
-                                    self.state.x,
-                                    self.state.y,
-                                    &rd,
-                                    map_read,
-                                );
-                                if movement::is_valid_move(rx, ry, map_read)
-                                    && !matches!(
-                                        self.knowledge.get_tile(rx, ry),
-                                        knowledge::TileInfo::Obstacle
-                                    )
-                                {
-                                    self.state.x = rx;
-                                    self.state.y = ry;
-                                    
-                                    moved = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if !moved {
-                            debug!(
-                                "Robot: {} Path to station blocked @ {:?}.",
-                                robot_id,
-                                (self.state.x, self.state.y)
-                            );
-                        }
-                        drop(map_read_guard);
-                        debug!(
-                            "Robot: {} Returning @ {:?}, Energy: {}",
-                            robot_id,
-                            (self.state.x, self.state.y),
-                            self.state.energy
-                        );
-                        thread::sleep(config::random_sleep_duration(
-                            config::RETURN_SLEEP_MIN_MS,
-                            config::RETURN_SLEEP_MAX_MS,
-                        ));
                     }
                     RobotStatus::AtStation => {
                         thread::sleep(Duration::from_millis(config::AT_STATION_SLEEP_MS));
                     }
                     _ => {
-                        error!("Robot: {} Unhandle state {:?}.", robot_id, self.state.status);
+                        error!("Robot: {} Unhandled state {:?}.", robot_id, self.state.status);
                         self.state.status = RobotStatus::Exploring;
                         thread::sleep(config::UNHANDLED_STATE_SLEEP);
                     }
                 }
             }
             info!("Robot {}: Thread shutting down.", robot_id);
-            if sender
-                .send(RobotEvent::Shutdown {
-                    id: robot_id,
-                    reason: "Thread loop exited".to_string(),
-                })
-                .is_err()
-            {
-                error!("Robot: {} Failed send final shutdown.", robot_id);
-            }
+            let _ = sender.send(RobotEvent::Shutdown {
+                id: robot_id,
+                reason: "Thread loop exited".to_string(),
+            });
         });
+    }
+
+    fn low_energy(&self) -> bool {
+        self.state.energy <= self.config.low_energy_threshold
+    }
+
+    fn transition_to_returning(&mut self, visited: &mut HashSet<(usize, usize)>) {
+        info!(
+            "Robot {}: Low energy ({}), returning to station.",
+            self.state.id, self.state.energy
+        );
+        self.state.status = RobotStatus::ReturningToStation;
+        visited.clear();
+    }
+
+    fn explore_step(
+        &mut self,
+        sender: &Sender<RobotEvent>,
+        map: &Arc<RwLock<Map>>,
+        visited: &mut HashSet<(usize, usize)>,
+    ) -> Result<(), String> {
+        let map_read_guard = map.read().map_err(|e| format!("Map lock poisoned: {}", e))?;
+        let map_read = &*map_read_guard;
+
+        self.observe_surroundings(map_read);
+
+        let direction = movement::smart_direction(
+            self.state.x,
+            self.state.y,
+            &self.knowledge,
+            visited,
+            map_read,
+        )
+        .unwrap_or_else(movement::Direction::random);
+
+        let (new_x, new_y) = movement::next_position(self.state.x, self.state.y, &direction, map_read);
+
+        let moved = self.try_move(new_x, new_y, visited, map_read);
+
+        let is_obstacle = map_read.is_obstacle(self.state.x, self.state.y);
+        drop(map_read_guard);
+
+        if moved {
+            let event = RobotEvent::ExplorationData {
+                id: self.state.id,
+                x: self.state.x,
+                y: self.state.y,
+                is_obstacle,
+            };
+            sender.send(event).map_err(|e| format!("Failed to send ExplorationData: {}", e))?;
+        }
+
+        thread::sleep(config::random_sleep_duration(
+            self.config.primary_action_sleep_min_ms,
+            self.config.primary_action_sleep_max_ms,
+        ));
+        Ok(())
+    }
+
+    fn observe_surroundings(&mut self, map: &Map) {
+        let (x, y) = (self.state.x, self.state.y);
+        self.knowledge.observe_and_update(x, y, map);
+        for dir in Direction::all().iter() {
+            let (nx, ny) = movement::next_position(x, y, dir, map);
+            if (nx, ny) != (x, y) {
+                self.knowledge.observe_and_update(nx, ny, map);
+            }
+        }
+    }
+
+    fn try_move(
+        &mut self,
+        new_x: usize,
+        new_y: usize,
+        visited: &mut HashSet<(usize, usize)>,
+        map: &Map,
+    ) -> bool {
+        if movement::is_valid_move(new_x, new_y, map)
+            && !matches!(self.knowledge.get_tile(new_x, new_y), TileInfo::Obstacle)
+        {
+            self.state.x = new_x;
+            self.state.y = new_y;
+            visited.insert((new_x, new_y));
+            self.state.use_energy(self.config.movement_energy_cost);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn handle_returning_to_station(
+        &mut self,
+        sender: &Sender<RobotEvent>,
+        map: &Arc<RwLock<Map>>,
+        station_coords: (usize, usize),
+        visited: &mut HashSet<(usize, usize)>,
+    ) -> bool {
+        let (station_x, station_y) = station_coords;
+        if self.state.x == station_x && self.state.y == station_y {
+            self.arrive_at_station(sender, visited);
+            return true;
+        }
+
+        let map_read_guard = match map.read() {
+            Ok(g) => g,
+            Err(p) => {
+                error!("Robot: {} Map read poisoned! {}", self.state.id, p);
+                return true;
+            }
+        };
+        let map_read = &*map_read_guard;
+        let direction = common::move_towards_target(
+            self.state.x,
+            self.state.y,
+            station_x,
+            station_y,
+            &self.knowledge,
+            map_read,
+        );
+        let (new_x, new_y) = movement::next_position(self.state.x, self.state.y, &direction, map_read);
+
+        let mut moved = false;
+        if movement::is_valid_move(new_x, new_y, map_read)
+            && !matches!(self.knowledge.get_tile(new_x, new_y), TileInfo::Obstacle)
+        {
+            self.state.x = new_x;
+            self.state.y = new_y;
+            moved = true;
+        }
+        if !moved {
+            for _ in 0..4 {
+                let rd = movement::Direction::random();
+                let (rx, ry) = movement::next_position(self.state.x, self.state.y, &rd, map_read);
+                if movement::is_valid_move(rx, ry, map_read)
+                    && !matches!(self.knowledge.get_tile(rx, ry), TileInfo::Obstacle)
+                {
+                    self.state.x = rx;
+                    self.state.y = ry;
+                    moved = true;
+                    break;
+                }
+            }
+        }
+        if !moved {
+            debug!(
+                "Robot: {} Path to station blocked @ {:?}.",
+                self.state.id,
+                (self.state.x, self.state.y)
+            );
+        }
+        drop(map_read_guard);
+        debug!(
+            "Robot: {} Returning @ {:?}, Energy: {}",
+            self.state.id,
+            (self.state.x, self.state.y),
+            self.state.energy
+        );
+        thread::sleep(config::random_sleep_duration(
+            config::RETURN_SLEEP_MIN_MS,
+            config::RETURN_SLEEP_MAX_MS,
+        ));
+        true
+    }
+
+    fn arrive_at_station(&mut self, sender: &Sender<RobotEvent>, visited: &mut HashSet<(usize, usize)>) {
+        info!("Robot: {} Arrived station.", self.state.id);
+        self.state.status = RobotStatus::AtStation;
+        let k_clone = self.knowledge.clone();
+        let ev = RobotEvent::ArrivedAtStation {
+            id: self.state.id,
+            knowledge: k_clone,
+        };
+        if let Err(e) = sender.send(ev) {
+            error!("Robot: {} Failed send Arrived: {}", self.state.id, e);
+            return;
+        }
+        info!("Robot: {} Waiting MergeComplete...", self.state.id);
+
+        match self.merge_complete_receiver.recv_timeout(config::MERGE_TIMEOUT) {
+            Ok(RobotEvent::MergeComplete { merged_knowledge, .. }) => {
+                info!("Robot: {} MergeComplete OK.", self.state.id);
+                self.knowledge = merged_knowledge;
+                self.state.energy = self.state.max_energy;
+                self.state.status = RobotStatus::Exploring;
+                visited.clear();
+                info!("Robot: {} Resuming exploration.", self.state.id);
+            }
+            Ok(o) => {
+                warn!("Robot: {} Unexpected event: {:?}", self.state.id, o);
+                self.state.status = RobotStatus::Exploring;
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                warn!("Robot: {} Merge Timeout.", self.state.id);
+                self.state.status = RobotStatus::Exploring;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                error!("Robot: {} Merge channel disconnected.", self.state.id);
+            }
+        }
     }
 }
