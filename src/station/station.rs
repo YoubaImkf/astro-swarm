@@ -108,4 +108,78 @@ mod tests {
         station.process_event(&event);
         assert!(rx.try_recv().is_err());
     }
+    
+    #[test]
+    fn test_station_merges_multiple_robots_knowledge() {
+        let (tx, rx) = create_channel();
+        let width = 20;
+        let height = 20;
+        let station = Station::new(tx.clone(), width, height);
+    
+        // Robot 1 discovers (0,0) top-left corner
+        let mut knowledge1 = RobotKnowledge::new(width, height);
+        knowledge1.update_tile(0, 0, TileInfo::Walkable);
+        let event1 = RobotEvent::ArrivedAtStation { id: 1, knowledge: knowledge1 };
+        station.process_event(&event1);
+        let _ = rx.recv();
+    
+        // Robot 2 discovers (1,1)
+        let mut knowledge2 = RobotKnowledge::new(width, height);
+        knowledge2.update_tile(1, 1, TileInfo::Obstacle);
+        let event2 = RobotEvent::ArrivedAtStation { id: 2, knowledge: knowledge2 };
+        station.process_event(&event2);
+        let received = rx.recv().expect("Should receive MergeComplete event");
+    
+        match received {
+            RobotEvent::MergeComplete { merged_knowledge, .. } => {
+                assert_eq!(merged_knowledge.get_tile(0, 0), &TileInfo::Walkable);
+                assert_eq!(merged_knowledge.get_tile(1, 1), &TileInfo::Obstacle);
+            }
+            _ => panic!("Expected MergeComplete event"),
+        }
+    }
+
+    #[test]
+    fn test_station_handles_empty_knowledge() {
+        let (tx, rx) = create_channel();
+        let width = 4;
+        let height = 4;
+        let station = Station::new(tx, width, height);
+
+        let knowledge = RobotKnowledge::new(width, height);
+        let event = RobotEvent::ArrivedAtStation { id: 7, knowledge };
+        station.process_event(&event);
+
+        let received = rx.recv().expect("Should receive MergeComplete event");
+        match received {
+            RobotEvent::MergeComplete { merged_knowledge, .. } => {
+                for x in 0..width {
+                    for y in 0..height {
+                        let tile = merged_knowledge.get_tile(x, y);
+                        if tile == &TileInfo::Station {
+                            continue; // Accept station tile
+                        }
+                        assert_eq!(tile, &TileInfo::Unknown);
+                    }
+                }
+            }
+            _ => panic!("Expected MergeComplete event"),
+        }
+    }
+
+    #[test]
+    fn test_station_merge_event_has_correct_id() {
+        let (tx, rx) = create_channel();
+        let station = Station::new(tx, 3, 3);
+
+        let knowledge = RobotKnowledge::new(3, 3);
+        let event = RobotEvent::ArrivedAtStation { id: 99, knowledge };
+        station.process_event(&event);
+
+        let received = rx.recv().expect("Should receive MergeComplete event");
+        match received {
+            RobotEvent::MergeComplete { id, .. } => assert_eq!(id, 99),
+            _ => panic!("Expected MergeComplete event"),
+        }
+    }
 }
