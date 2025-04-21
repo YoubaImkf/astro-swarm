@@ -7,28 +7,19 @@ use ratatui::{
 };
 use std::collections::HashMap;
 
-use crate::{
-    app::App, 
-    communication::channels::ResourceType, 
-    map::noise::Map, robot::RobotState
-};
+use crate::{app::App, communication::channels::ResourceType, map::noise::Map, robot::RobotState};
 
 pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Min(0)])
         .split(area);
 
     let top_area = main_chunks[0];
 
     let horizontal_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(75),
-            Constraint::Percentage(25),
-        ])
+        .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
         .split(top_area);
 
     render_map_with_robots(frame, horizontal_chunks[0], app);
@@ -41,7 +32,6 @@ fn render_map_with_robots(frame: &mut Frame, area: Rect, app: &App) {
 
     let mut display_lines = create_styled_lines(&map_guard);
     drop(map_guard);
-
 
     overlay_robots(
         display_lines.as_mut_slice(),

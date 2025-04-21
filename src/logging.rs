@@ -2,12 +2,14 @@ use chrono::Local;
 use color_eyre::Result;
 use fern::Dispatch;
 use log::LevelFilter;
-use std::{fs::{self, OpenOptions}, path::PathBuf};
+use std::{
+    fs::{self, OpenOptions},
+    path::PathBuf,
+};
 
 const LOG_DIR: &str = "logs";
 
 pub fn setup_logging() -> Result<()> {
-
     fs::create_dir_all(LOG_DIR)?;
 
     let log_file_name = format!(
@@ -41,6 +43,6 @@ pub fn setup_logging() -> Result<()> {
         "File logging initialized. Log file: {}",
         full_log_path.display()
     );
-    
+
     Ok(())
 }

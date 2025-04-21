@@ -5,14 +5,14 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
+use crate::communication::channels::RobotEvent;
+use crate::map::noise::Map;
 use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
-use crate::robot::utils::common;
-use crate::robot::utils::config;
 use crate::robot::core::movement;
 use crate::robot::core::movement::Direction;
 use crate::robot::core::state::{RobotState, RobotStatus};
-use crate::communication::channels::RobotEvent;
-use crate::map::noise::Map;
+use crate::robot::utils::common;
+use crate::robot::utils::config;
 
 pub struct ExplorationRobot {
     state: RobotState,
@@ -57,7 +57,12 @@ impl ExplorationRobot {
                         }
                     }
                     RobotStatus::ReturningToStation => {
-                        if self.handle_returning_to_station(&sender, &map, station_coords, &mut visited) {
+                        if self.handle_returning_to_station(
+                            &sender,
+                            &map,
+                            station_coords,
+                            &mut visited,
+                        ) {
                             continue;
                         }
                     }
@@ -65,7 +70,10 @@ impl ExplorationRobot {
                         thread::sleep(Duration::from_millis(config::AT_STATION_SLEEP_MS));
                     }
                     _ => {
-                        error!("Robot: {} Unhandled state {:?}.", robot_id, self.state.status);
+                        error!(
+                            "Robot: {} Unhandled state {:?}.",
+                            robot_id, self.state.status
+                        );
                         self.state.status = RobotStatus::Exploring;
                         thread::sleep(config::UNHANDLED_STATE_SLEEP);
                     }
@@ -98,7 +106,9 @@ impl ExplorationRobot {
         map: &Arc<RwLock<Map>>,
         visited: &mut HashSet<(usize, usize)>,
     ) -> Result<(), String> {
-        let map_read_guard = map.read().map_err(|e| format!("Map lock poisoned: {}", e))?;
+        let map_read_guard = map
+            .read()
+            .map_err(|e| format!("Map lock poisoned: {}", e))?;
         let map_read = &*map_read_guard;
 
         self.observe_surroundings(map_read);
@@ -112,7 +122,8 @@ impl ExplorationRobot {
         )
         .unwrap_or_else(movement::Direction::random);
 
-        let (new_x, new_y) = movement::next_position(self.state.x, self.state.y, &direction, map_read);
+        let (new_x, new_y) =
+            movement::next_position(self.state.x, self.state.y, &direction, map_read);
 
         let moved = self.try_move(new_x, new_y, visited, map_read);
 
@@ -126,7 +137,9 @@ impl ExplorationRobot {
                 y: self.state.y,
                 is_obstacle,
             };
-            sender.send(event).map_err(|e| format!("Failed to send ExplorationData: {}", e))?;
+            sender
+                .send(event)
+                .map_err(|e| format!("Failed to send ExplorationData: {}", e))?;
         }
 
         thread::sleep(config::random_sleep_duration(
@@ -196,7 +209,8 @@ impl ExplorationRobot {
             &self.knowledge,
             map_read,
         );
-        let (new_x, new_y) = movement::next_position(self.state.x, self.state.y, &direction, map_read);
+        let (new_x, new_y) =
+            movement::next_position(self.state.x, self.state.y, &direction, map_read);
 
         let mut moved = false;
         if movement::is_valid_move(new_x, new_y, map_read)
@@ -241,7 +255,11 @@ impl ExplorationRobot {
         true
     }
 
-    fn arrive_at_station(&mut self, sender: &Sender<RobotEvent>, visited: &mut HashSet<(usize, usize)>) {
+    fn arrive_at_station(
+        &mut self,
+        sender: &Sender<RobotEvent>,
+        visited: &mut HashSet<(usize, usize)>,
+    ) {
         info!("Robot: {} Arrived station.", self.state.id);
         self.state.status = RobotStatus::AtStation;
         let k_clone = self.knowledge.clone();
@@ -255,8 +273,13 @@ impl ExplorationRobot {
         }
         info!("Robot: {} Waiting MergeComplete...", self.state.id);
 
-        match self.merge_complete_receiver.recv_timeout(config::MERGE_TIMEOUT) {
-            Ok(RobotEvent::MergeComplete { merged_knowledge, .. }) => {
+        match self
+            .merge_complete_receiver
+            .recv_timeout(config::MERGE_TIMEOUT)
+        {
+            Ok(RobotEvent::MergeComplete {
+                merged_knowledge, ..
+            }) => {
                 info!("Robot: {} MergeComplete OK.", self.state.id);
                 self.knowledge = merged_knowledge;
                 self.state.energy = self.state.max_energy;
@@ -279,7 +302,6 @@ impl ExplorationRobot {
     }
 }
 
-
 // NOT WORKING - FIX TODO
 // #[cfg(test)]
 // mod tests {
@@ -301,7 +323,7 @@ impl ExplorationRobot {
 //         map.set_walkable(1, 0);
 //         map.add_resource(1, 0, ResourceType::Minerals, 100);
 //         let map = Arc::new(RwLock::new(map));
-        
+
 //         let robot_state = RobotState::new(1, 0, 0, RobotStatus::Exploring, 10);
 //         let (_merge_tx, merge_rx) = create_channel();
 //         let robot = ExplorationRobot::new(robot_state, width, height, merge_rx);

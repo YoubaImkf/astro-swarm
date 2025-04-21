@@ -82,7 +82,7 @@ impl Map {
         ];
         for &(x, y) in walkable_positions.choose_multiple(&mut rng, count) {
             let resource_type = resource_types.choose(&mut rng).unwrap().clone();
-            
+
             let resource_amount = match resource_type {
                 ResourceType::SciencePoints => rng.random_range(1..=5),
                 _ => rng.random_range(10..100),
@@ -256,10 +256,15 @@ impl Map {
         use super::resources::ResourceType as InternalResourceType;
         let internal_type = match resource_type {
             crate::communication::channels::ResourceType::Energy => InternalResourceType::Energy,
-            crate::communication::channels::ResourceType::Minerals => InternalResourceType::Minerals,
-            crate::communication::channels::ResourceType::SciencePoints => InternalResourceType::SciencePoints,
+            crate::communication::channels::ResourceType::Minerals => {
+                InternalResourceType::Minerals
+            }
+            crate::communication::channels::ResourceType::SciencePoints => {
+                InternalResourceType::SciencePoints
+            }
         };
-        self.resource_manager.add_resource(x, y, internal_type, amount);
+        self.resource_manager
+            .add_resource(x, y, internal_type, amount);
     }
 
     pub fn set_walkable(&mut self, x: usize, y: usize) {

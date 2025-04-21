@@ -4,15 +4,15 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::robot::core::knowledge::{self, RobotKnowledge, TileInfo};
-use crate::robot::utils::common;
-use crate::robot::utils::config;
-use crate::robot::core::movement;
-use crate::robot::RobotState;
 use crate::communication::channels::{ResourceType, RobotEvent};
 use crate::map::noise::Map;
+use crate::robot::core::knowledge::{self, RobotKnowledge, TileInfo};
+use crate::robot::core::movement;
 use crate::robot::core::movement::Direction;
 use crate::robot::core::state::RobotStatus;
+use crate::robot::utils::common;
+use crate::robot::utils::config;
+use crate::robot::RobotState;
 
 const RANDOM_MOVE_ATTEMPTS: usize = 4;
 
@@ -155,7 +155,10 @@ impl CollectionRobot {
                         self.handle_at_station();
                     }
                     _ => {
-                        error!("Robot: {} Unhandled state {:?}.", robot_id, self.state.status);
+                        error!(
+                            "Robot: {} Unhandled state {:?}.",
+                            robot_id, self.state.status
+                        );
                         self.state.status = RobotStatus::Collecting;
                         thread::sleep(config::UNHANDLED_STATE_SLEEP);
                     }
@@ -325,14 +328,22 @@ impl CollectionRobot {
                             error!("Robot: {} Failed remove map @ {:?}", robot_id, (x, y));
                         }
                     } else {
-                        warn!("Robot: {} Collect failed (capacity?) @ {:?}", robot_id, (x, y));
+                        warn!(
+                            "Robot: {} Collect failed (capacity?) @ {:?}",
+                            robot_id,
+                            (x, y)
+                        );
                         if self.state.is_full() {
                             self.state.status = RobotStatus::ReturningToStation;
                             // self.current_target_coords = None;
                         }
                     }
                 } else {
-                    debug!("Robot: {} Resource changed pre-write @ {:?}", robot_id, (x, y));
+                    debug!(
+                        "Robot: {} Resource changed pre-write @ {:?}",
+                        robot_id,
+                        (x, y)
+                    );
                 }
             } else {
                 debug!("Robot: {} Resource gone pre-write @ {:?}", robot_id, (x, y));
@@ -406,7 +417,7 @@ impl CollectionRobot {
         direction: Direction,
         map: &Arc<RwLock<Map>>,
         config: &config::RobotTypeConfig,
-        sender: &Sender<RobotEvent>, 
+        sender: &Sender<RobotEvent>,
     ) {
         let map_read_guard = match map.read() {
             Ok(g) => g,
@@ -446,7 +457,7 @@ impl CollectionRobot {
                     y: self.state.y,
                     resource_type: None,
                     amount: 0,
-                });                
+                });
             } else {
                 warn!(
                     "Robot: {} Not enough energy to movEnergy: {}/{}",
@@ -552,7 +563,7 @@ impl CollectionRobot {
             if self.state.status != RobotStatus::ReturningToStation {
                 self.state.use_energy(config.movement_energy_cost);
             }
-            
+
             moved = true;
         }
 
@@ -568,7 +579,7 @@ impl CollectionRobot {
                 {
                     self.state.x = rx;
                     self.state.y = ry;
-                    
+
                     if self.state.status != RobotStatus::ReturningToStation {
                         self.state.use_energy(config.movement_energy_cost);
                     }

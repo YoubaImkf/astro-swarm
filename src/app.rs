@@ -12,7 +12,7 @@ use crate::{
     robot::behavior::collection::CollectionRobot,
     robot::behavior::exploration::ExplorationRobot,
     robot::behavior::scientific::ScientificRobot,
-    robot::core::state::{RobotStatus, RobotState},
+    robot::core::state::{RobotState, RobotStatus},
     robot::utils::config,
     station::station::Station,
 };
@@ -51,7 +51,7 @@ impl App {
     /// * `resource_seed` - Seed for placing resources on the map.
     pub fn new(width: usize, height: usize, map_seed: u32, resource_seed: u64) -> Self {
         let mut map = Map::new(width, height, map_seed);
-        
+
         map.spawn_resources(width * height / 30, resource_seed);
 
         let (main_sender, main_receiver) = mpsc::channel();
@@ -185,7 +185,13 @@ impl App {
 
         match robot_type {
             RobotType::Exploration => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Exploring, config::EXPLORATION_ROBOT_MAX_ENERGY);
+                let robot_state = RobotState::new(
+                    id,
+                    x,
+                    y,
+                    RobotStatus::Exploring,
+                    config::EXPLORATION_ROBOT_MAX_ENERGY,
+                );
                 let robot_logic = ExplorationRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -198,7 +204,13 @@ impl App {
                 info!("Spawned Exploration Robot {}", id);
             }
             RobotType::Collection => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Collecting, config::COLLECTION_ROBOT_MAX_ENERGY);
+                let robot_state = RobotState::new(
+                    id,
+                    x,
+                    y,
+                    RobotStatus::Collecting,
+                    config::COLLECTION_ROBOT_MAX_ENERGY,
+                );
                 let mut robot_logic = CollectionRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -216,7 +228,13 @@ impl App {
                 info!("Spawned Collection Robot {}", id);
             }
             RobotType::Scientific => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Analyzing, config::SCIENTIFIC_ROBOT_MAX_ENERGY);
+                let robot_state = RobotState::new(
+                    id,
+                    x,
+                    y,
+                    RobotStatus::Analyzing,
+                    config::SCIENTIFIC_ROBOT_MAX_ENERGY,
+                );
                 let mut robot_logic = ScientificRobot::new(
                     robot_state.clone(),
                     self.map_width,

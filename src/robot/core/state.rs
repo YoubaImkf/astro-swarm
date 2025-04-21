@@ -24,7 +24,13 @@ pub struct RobotState {
 }
 
 impl RobotState {
-    pub fn new(id: u32, start_x: usize, start_y: usize, initial_status: RobotStatus, max_energy: u32,) -> Self {
+    pub fn new(
+        id: u32,
+        start_x: usize,
+        start_y: usize,
+        initial_status: RobotStatus,
+        max_energy: u32,
+    ) -> Self {
         Self {
             id,
             x: start_x,
