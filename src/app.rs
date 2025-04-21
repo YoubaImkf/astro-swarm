@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{mpsc, Arc, RwLock},
 };
 
@@ -29,6 +29,7 @@ pub struct App {
     pub collected_resources: HashMap<ResourceType, u32>,
     pub scientific_data: u64,
     pub total_explored: usize,
+    pub explored_tiles: HashSet<(usize, usize)>,
     pub map_width: usize,
     pub map_height: usize,
 }
@@ -70,6 +71,7 @@ impl App {
             collected_resources: HashMap::new(),
             scientific_data: 0,
             total_explored: 0,
+            explored_tiles: HashSet::new(),
             map_width: width,
             map_height: height,
         };
@@ -192,6 +194,7 @@ impl App {
                 );
                 self.exploration_robots.insert(id, robot_state);
                 robot_logic.start(event_sender_clone, map_clone);
+
                 info!("Spawned Exploration Robot {}", id);
             }
             RobotType::Collection => {
@@ -256,6 +259,10 @@ impl App {
                     if let Some(robot) = self.get_robot_state_mut(id) {
                         robot.x = x;
                         robot.y = y;
+                    }
+
+                    if self.explored_tiles.insert((x, y)) {
+                        self.total_explored += 1;
                     }
                 }
                 RobotEvent::CollectionData {
