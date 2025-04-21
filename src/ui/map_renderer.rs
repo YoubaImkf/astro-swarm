@@ -8,21 +8,20 @@ use ratatui::{
 use std::collections::HashMap;
 
 use crate::{
-    app::App, communication::channels::ResourceType, logging, map::noise::Map, robot::RobotState
+    app::App, 
+    communication::channels::ResourceType, 
+    map::noise::Map, robot::RobotState
 };
 
 pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
-
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(75), // map and sidebar
-            Constraint::Percentage(25), // logs
+            Constraint::Min(0),
         ])
         .split(area);
 
     let top_area = main_chunks[0];
-    let log_area = main_chunks[1];
 
     let horizontal_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -34,9 +33,6 @@ pub fn render_app(frame: &mut Frame, area: Rect, app: &App) {
 
     render_map_with_robots(frame, horizontal_chunks[0], app);
     render_sidebar_statistics(frame, horizontal_chunks[1], app);
-
-    let log_widget = logging::create_log_widget();
-    frame.render_widget(log_widget, log_area);
 }
 
 /// Renders the map grid and overlays robot symbols based on their current state.

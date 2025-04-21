@@ -22,3 +22,6 @@ Cargo.lock
 
 # vscode
 .vscode
+
+# Remove all logs file
+*.log
