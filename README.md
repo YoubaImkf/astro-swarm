@@ -9,9 +9,7 @@ The project features a terminal-based visualization system and realistic robot b
 
 
 ## FeedBack ERROR 🥲
-- Collector/Scientist robots are currently not moving.....
-- The implemented colors are not the right ones ?..
-
+- Some logic errors to fix...
 
 ## Features
 
