@@ -10,7 +10,7 @@ use crate::{
     communication::channels::{ResourceType, RobotEvent},
     map::noise::Map,
     robot::{
-        collection::CollectionRobot, config::RECHARGE_ENERGY, exploration::ExplorationRobot,
+        collection::CollectionRobot, config, exploration::ExplorationRobot,
         scientific::ScientificRobot, state::RobotStatus, RobotState,
     },
     station::station::Station,
@@ -182,7 +182,7 @@ impl App {
 
         match robot_type {
             RobotType::Exploration => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Exploring);
+                let robot_state = RobotState::new(id, x, y, RobotStatus::Exploring, config::EXPLORATION_ROBOT_MAX_ENERGY);
                 let robot_logic = ExplorationRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -194,7 +194,7 @@ impl App {
                 info!("Spawned Exploration Robot {}", id);
             }
             RobotType::Collection => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Collecting);
+                let robot_state = RobotState::new(id, x, y, RobotStatus::Collecting, config::COLLECTION_ROBOT_MAX_ENERGY);
                 let mut robot_logic = CollectionRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -212,7 +212,7 @@ impl App {
                 info!("Spawned Collection Robot {}", id);
             }
             RobotType::Scientific => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Analyzing);
+                let robot_state = RobotState::new(id, x, y, RobotStatus::Analyzing, config::SCIENTIFIC_ROBOT_MAX_ENERGY);
                 let mut robot_logic = ScientificRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -304,7 +304,7 @@ impl App {
                     };
 
                     if let Some(robot) = self.get_robot_state_mut(id) {
-                        robot.energy = RECHARGE_ENERGY;
+                        robot.energy = robot.max_energy;
                         robot.collected_resources.clear();
 
                         match robot_type {

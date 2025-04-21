@@ -170,7 +170,7 @@ impl ExplorationRobot {
                                 }) => {
                                     info!("Robot: {} MergeComplete OK.", robot_id);
                                     self.knowledge = merged_knowledge;
-                                    self.state.energy = config::RECHARGE_ENERGY;
+                                    self.state.energy = self.state.max_energy;
                                     self.state.status = RobotStatus::Exploring;
                                     visited_during_exploration.clear();
                                     info!("Robot: {} Resuming exploration.", robot_id);

@@ -6,12 +6,15 @@ pub const RETURN_SLEEP_MIN_MS: u64 = 150;
 pub const RETURN_SLEEP_MAX_MS: u64 = 400;
 /// Timeout duration for waiting for a MergeComplete message (seconds)
 pub const MERGE_TIMEOUT: Duration = Duration::from_secs(3);
-/// Amount of energy restored when recharging at the station
-pub const RECHARGE_ENERGY: u32 = 100;
 /// Default sleep duration when in the AtStation state (milliseconds)
 pub const AT_STATION_SLEEP_MS: u64 = 100;
 /// Default sleep duration when encountering an unhandled state (seconds)
 pub const UNHANDLED_STATE_SLEEP: Duration = Duration::from_secs(1);
+
+/// Max energy of each robots
+pub const COLLECTION_ROBOT_MAX_ENERGY: u32 = 500;
+pub const EXPLORATION_ROBOT_MAX_ENERGY: u32 = 800;
+pub const SCIENTIFIC_ROBOT_MAX_ENERGY: u32 = 500;
 
 #[derive(Debug, Clone)]
 pub struct RobotTypeConfig {
@@ -41,7 +44,7 @@ pub const COLLECTION_CONFIG: RobotTypeConfig = RobotTypeConfig {
 pub const SCIENTIFIC_CONFIG: RobotTypeConfig = RobotTypeConfig {
     low_energy_threshold: 30,
     primary_action_sleep_min_ms: 800,
-    primary_action_sleep_max_ms: 2500,
+    primary_action_sleep_max_ms: 1500,
     movement_energy_cost: 1,
     action_energy_cost: Some(5),
 };

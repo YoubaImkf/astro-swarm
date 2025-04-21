@@ -17,18 +17,20 @@ pub struct RobotState {
     pub x: usize,
     pub y: usize,
     pub energy: u32,
+    pub max_energy: u32,
     pub collected_resources: HashMap<ResourceType, u32>,
     pub max_capacity: u32,
     pub status: RobotStatus,
 }
 
 impl RobotState {
-    pub fn new(id: u32, start_x: usize, start_y: usize, initial_status: RobotStatus) -> Self {
+    pub fn new(id: u32, start_x: usize, start_y: usize, initial_status: RobotStatus, max_energy: u32,) -> Self {
         Self {
             id,
             x: start_x,
             y: start_y,
-            energy: 100,
+            energy: max_energy,
+            max_energy,
             collected_resources: HashMap::new(),
             max_capacity: 700,
             status: initial_status,
