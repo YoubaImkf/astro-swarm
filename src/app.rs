@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{mpsc, Arc, RwLock},
 };
 
@@ -9,10 +9,11 @@ use rand::{rngs::StdRng, seq::IndexedRandom, Rng, SeedableRng};
 use crate::{
     communication::channels::{ResourceType, RobotEvent},
     map::noise::Map,
-    robot::{
-        collection::CollectionRobot, config::RECHARGE_ENERGY, exploration::ExplorationRobot,
-        scientific::ScientificRobot, state::RobotStatus, RobotState,
-    },
+    robot::behavior::collection::CollectionRobot,
+    robot::behavior::exploration::ExplorationRobot,
+    robot::behavior::scientific::ScientificRobot,
+    robot::core::state::{RobotStatus, RobotState},
+    robot::utils::config,
     station::station::Station,
 };
 
@@ -28,6 +29,7 @@ pub struct App {
     pub collected_resources: HashMap<ResourceType, u32>,
     pub scientific_data: u64,
     pub total_explored: usize,
+    pub explored_tiles: HashSet<(usize, usize)>,
     pub map_width: usize,
     pub map_height: usize,
 }
@@ -69,6 +71,7 @@ impl App {
             collected_resources: HashMap::new(),
             scientific_data: 0,
             total_explored: 0,
+            explored_tiles: HashSet::new(),
             map_width: width,
             map_height: height,
         };
@@ -182,7 +185,7 @@ impl App {
 
         match robot_type {
             RobotType::Exploration => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Exploring);
+                let robot_state = RobotState::new(id, x, y, RobotStatus::Exploring, config::EXPLORATION_ROBOT_MAX_ENERGY);
                 let robot_logic = ExplorationRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -191,10 +194,11 @@ impl App {
                 );
                 self.exploration_robots.insert(id, robot_state);
                 robot_logic.start(event_sender_clone, map_clone);
+
                 info!("Spawned Exploration Robot {}", id);
             }
             RobotType::Collection => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Collecting);
+                let robot_state = RobotState::new(id, x, y, RobotStatus::Collecting, config::COLLECTION_ROBOT_MAX_ENERGY);
                 let mut robot_logic = CollectionRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -212,7 +216,7 @@ impl App {
                 info!("Spawned Collection Robot {}", id);
             }
             RobotType::Scientific => {
-                let robot_state = RobotState::new(id, x, y, RobotStatus::Analyzing);
+                let robot_state = RobotState::new(id, x, y, RobotStatus::Analyzing, config::SCIENTIFIC_ROBOT_MAX_ENERGY);
                 let mut robot_logic = ScientificRobot::new(
                     robot_state.clone(),
                     self.map_width,
@@ -255,6 +259,10 @@ impl App {
                     if let Some(robot) = self.get_robot_state_mut(id) {
                         robot.x = x;
                         robot.y = y;
+                    }
+
+                    if self.explored_tiles.insert((x, y)) {
+                        self.total_explored += 1;
                     }
                 }
                 RobotEvent::CollectionData {
@@ -304,7 +312,7 @@ impl App {
                     };
 
                     if let Some(robot) = self.get_robot_state_mut(id) {
-                        robot.energy = RECHARGE_ENERGY;
+                        robot.energy = robot.max_energy;
                         robot.collected_resources.clear();
 
                         match robot_type {

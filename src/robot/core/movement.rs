@@ -1,5 +1,5 @@
 use crate::map::noise::Map;
-use crate::robot::knowledge::{RobotKnowledge, TileInfo};
+use crate::robot::core::knowledge::{RobotKnowledge, TileInfo};
 use rand::seq::IndexedRandom;
 use rand::{rng, Rng};
 use std::collections::HashSet;

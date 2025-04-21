@@ -1,38 +1,46 @@
+use chrono::Local;
+use color_eyre::Result;
+use fern::Dispatch;
 use log::LevelFilter;
-use ratatui::style::{Color, Style, Stylize};
-use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget};
-use color_eyre::Result; 
+use std::{fs::{self, OpenOptions}, path::PathBuf};
 
-/// Initialize the logging system for the app
-/// Set up tui-logger for displaying logs in UI.
+const LOG_DIR: &str = "logs";
+
 pub fn setup_logging() -> Result<()> {
-    tui_logger::init_logger(LevelFilter::Trace)?;
 
-    tui_logger::set_default_level(LevelFilter::Info);
+    fs::create_dir_all(LOG_DIR)?;
 
-    log::info!("TUI Logger Initialized");
+    let log_file_name = format!(
+        "astro-swarm-{}.log",
+        Local::now().format("%Y-%m-%d_%H-%M-%S")
+    );
+
+    let full_log_path = PathBuf::from(LOG_DIR).join(log_file_name);
+
+    let log_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open(&full_log_path)?;
+
+    Dispatch::new()
+        .level(LevelFilter::Trace)
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}][{}][{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .chain(log_file)
+        .apply()?;
+
+    log::info!(
+        "File logging initialized. Log file: {}",
+        full_log_path.display()
+    );
+    
     Ok(())
-}
-
-/// Creates and configures the TuiLoggerWidget for rendering.
-pub fn create_log_widget<'a>() -> TuiLoggerWidget<'a> {
-    TuiLoggerWidget::default()
-        .block(
-            ratatui::widgets::Block::default()
-                .title("Logs")
-                .border_style(Style::default().fg(Color::White))
-                .borders(ratatui::widgets::Borders::ALL),
-        )
-        .output_separator('|')
-        .output_timestamp(Some("%H:%M:%S".to_string()))
-        .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
-        .output_target(false) 
-        .output_file(false)
-        .output_line(false)
-
-        .style_error(Style::default().fg(Color::Red).bold())
-        .style_debug(Style::default().fg(Color::Blue))
-        .style_warn(Style::default().fg(Color::Yellow))
-        .style_trace(Style::default().fg(Color::Gray))
-        .style_info(Style::default().fg(Color::Green))
 }

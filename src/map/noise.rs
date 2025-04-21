@@ -82,9 +82,14 @@ impl Map {
         ];
         for &(x, y) in walkable_positions.choose_multiple(&mut rng, count) {
             let resource_type = resource_types.choose(&mut rng).unwrap().clone();
-            let amount = rng.random_range(10..100);
+            
+            let resource_amount = match resource_type {
+                ResourceType::SciencePoints => rng.random_range(1..=5),
+                _ => rng.random_range(10..100),
+            };
+
             self.resource_manager
-                .add_resource(x, y, resource_type, amount);
+                .add_resource(x, y, resource_type, resource_amount);
         }
     }
 
@@ -239,6 +244,30 @@ impl Map {
         }
 
         Some((channel_resource_type, amount))
+    }
+
+    pub fn add_resource(
+        &mut self,
+        x: usize,
+        y: usize,
+        resource_type: crate::communication::channels::ResourceType,
+        amount: u32,
+    ) {
+        use super::resources::ResourceType as InternalResourceType;
+        let internal_type = match resource_type {
+            crate::communication::channels::ResourceType::Energy => InternalResourceType::Energy,
+            crate::communication::channels::ResourceType::Minerals => InternalResourceType::Minerals,
+            crate::communication::channels::ResourceType::SciencePoints => InternalResourceType::SciencePoints,
+        };
+        self.resource_manager.add_resource(x, y, internal_type, amount);
+    }
+
+    pub fn set_walkable(&mut self, x: usize, y: usize) {
+        if let Some(row) = self.data.get_mut(y) {
+            if let Some(cell) = row.get_mut(x) {
+                *cell = false;
+            }
+        }
     }
 
     pub fn get_all_resources(&self) -> &HashMap<(usize, usize), Resource> {

@@ -7,11 +7,10 @@ A robotic exploration system for alien planet surveying, built with Rust 🦀.
 Astro Swarm simulates a multi-robot ecosystem that autonomously explores, collects resources, and conducts scientific research on undiscovered terrain. 
 The project features a terminal-based visualization system and realistic robot behaviors.
 
+![in_game_img](assets/main.png)
 
 ## FeedBack ERROR 🥲
-- Collector/Scientist robots are currently not moving.....
-- The implemented colors are not the right ones ?..
-
+- Some logic errors to fix...
 
 ## Features
 
