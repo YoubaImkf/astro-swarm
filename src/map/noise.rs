@@ -82,9 +82,14 @@ impl Map {
         ];
         for &(x, y) in walkable_positions.choose_multiple(&mut rng, count) {
             let resource_type = resource_types.choose(&mut rng).unwrap().clone();
-            let amount = rng.random_range(10..100);
+            
+            let resource_amount = match resource_type {
+                ResourceType::SciencePoints => rng.random_range(1..=5),
+                _ => rng.random_range(10..100),
+            };
+
             self.resource_manager
-                .add_resource(x, y, resource_type, amount);
+                .add_resource(x, y, resource_type, resource_amount);
         }
     }
 

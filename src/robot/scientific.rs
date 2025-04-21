@@ -227,6 +227,9 @@ impl ScientificRobot {
                             "Robot: {} Failed to record science value (internal capacity?), value: {}",
                             self.state.id, science_value
                         );
+                        if self.state.is_full() {
+                            self.state.status = RobotStatus::ReturningToStation;
+                        }
                     }
                     let event = RobotEvent::ScienceData {
                         id: self.state.id,
